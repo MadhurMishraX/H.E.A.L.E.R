@@ -1,0 +1,6 @@
+{
+  "name": "H.E.A.L.E.R",
+  "description": "Intelligent Medicine Dispensing System",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": []
+}
