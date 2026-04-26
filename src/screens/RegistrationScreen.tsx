@@ -118,7 +118,7 @@ export const RegistrationScreen = () => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="w-full h-full flex flex-col overflow-hidden font-sans relative"
+      className="w-full h-full flex flex-col overflow-y-auto font-sans relative scrollbar-thin scrollbar-thumb-brand-primary"
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--color-brand-card)_0%,_transparent_100%)] pointer-events-none opacity-40" />
 
@@ -138,7 +138,7 @@ export const RegistrationScreen = () => {
       </div>
 
       <div className="flex-1 flex flex-col items-center p-8 pt-0 relative z-10">
-        <div className="glass-card w-full max-w-5xl overflow-hidden relative flex flex-col">
+        <div className="glass-card w-full max-w-5xl overflow-y-auto relative flex flex-col max-h-[80vh] scrollbar-thin scrollbar-thumb-brand-secondary">
           {/* Top Gradient Line */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-primary to-brand-secondary" />
           

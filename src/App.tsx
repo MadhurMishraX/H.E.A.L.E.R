@@ -84,7 +84,7 @@ const MainLayout = () => {
   }
 
   return (
-    <div className="w-screen h-screen overflow-hidden bg-white text-gray-900 select-none font-sans relative">
+    <div className="w-screen h-screen overflow-auto bg-white text-gray-900 select-none font-sans relative">
       <Routes>
         <Route path="/" element={<LandingScreen />} />
         <Route path="/registration" element={<RegistrationScreen />} />

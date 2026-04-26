@@ -184,7 +184,7 @@ export const PrescriptionScreen = () => {
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-      className="w-full h-full flex flex-col bg-brand-navy overflow-hidden font-sans text-text-primary"
+      className="w-full h-full flex flex-col bg-brand-navy overflow-y-auto font-sans text-text-primary scrollbar-thin scrollbar-thumb-brand-primary"
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--color-brand-card)_0%,_transparent_100%)] pointer-events-none opacity-40" />
 

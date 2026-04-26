@@ -309,7 +309,7 @@ export const DiagnosisScreen = () => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="w-full h-full bg-brand-navy flex flex-col font-sans overflow-hidden text-text-primary relative"
+      className="w-full h-full bg-brand-navy flex flex-col font-sans overflow-y-auto text-text-primary relative scrollbar-thin scrollbar-thumb-brand-primary"
     >
       {/* Subtle Background Animation */}
       <motion.div 
@@ -346,7 +346,7 @@ export const DiagnosisScreen = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -30 }}
             transition={{ duration: 0.3 }}
-            className="glass-card w-full p-12 flex flex-col"
+            className="glass-card w-full p-12 flex flex-col max-h-[85vh] overflow-y-auto scrollbar-thin scrollbar-thumb-brand-secondary"
             style={{ minHeight: '60%' }}
           >
             <div className="flex items-start justify-between mb-8">

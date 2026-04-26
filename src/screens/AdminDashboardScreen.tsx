@@ -101,7 +101,7 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
   };
 
   return (
-    <div className="flex-1 flex flex-col gap-8">
+    <div className="flex-1 flex flex-col gap-8 overflow-y-auto pr-2 pb-8">
       <div className="grid grid-cols-2 gap-8">
         {[1, 2, 3, 4].map(n => {
           const inv = inventory.find((i: any) => i.compartment_number === n);
@@ -813,7 +813,7 @@ export const AdminDashboardScreen = () => {
   ] as const;
 
   return (
-    <div className="w-full h-full bg-brand-navy flex flex-col overflow-hidden font-sans text-text-primary pl-8 pr-8 pb-8 pt-6">
+    <div className="w-full h-full bg-brand-navy flex flex-col overflow-y-auto font-sans text-text-primary pl-8 pr-8 pb-8 pt-6 scrollbar-thin scrollbar-thumb-brand-primary">
       
       {/* Top Bar */}
       <div className="flex justify-between items-center mb-8 z-30">
