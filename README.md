@@ -1,12 +1,18 @@
 # H.E.A.L.E.R (Health Empowerment & Automated Learning Environment Robot)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-07405E?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![Hardware](https://img.shields.io/badge/Hardware-Arduino_%7C_ESP32-blue?style=for-the-badge&logo=arduino&logoColor=white)](https://www.arduino.cc/)
+
 H.E.A.L.E.R is a production-grade, hardware-integrated intelligent medical kiosk designed for remote health assistance and automated medicine dispensing. It leverages a custom-built **Smart Diagnosis Engine**, **Web Serial API** for hardware control, and a full-stack **SQLite + Express** architecture.
 
 ---
 
 ## 🚀 Key Features
 
-### 1. Smart Diagnosis Engine (v2.0)
+### 🧠 Smart Diagnosis Engine (v2.0)
 - **Dynamic Branching:** 12+ diagnostic tracks (Fever, Headache, Respiratory, Gastric, UTI, etc.) with adaptive question trees.
 - **Weighted Scoring Logic:** Professional-grade algorithm that calculates confidence scores based on real-time question weights.
 - **Confidence Tiers:** 
@@ -15,18 +21,18 @@ H.E.A.L.E.R is a production-grade, hardware-integrated intelligent medical kiosk
   - **Possible Match (<35%):** Auto-referral to medical professional.
 - **Serious Condition Guards:** Hardcoded safety flags to detect Sepsis, Severe Hypertension, or Emergencies, triggering instant "Red Alert" auto-referrals.
 
-### 2. Hardware-Integrated Dispensing
+### ⚙️ Hardware-Integrated Dispensing
 - **Real-time Web Serial Control:** Communicates directly with Arduino Mega from the browser without drivers.
 - **RFID-Based Secure Access:** Patients can log in using unique RFID tags or QR codes.
 - **ESP32-CAM Documentation:** Captures patient/symptom photos during diagnostic sessions for remote doctor review.
 - **Servo-Driven Logistics:** Precision medicine dispensing via multiple compartment silos.
 
-### 3. Patient Experience
+### 👥 Patient Experience
 - **Bi-lingual Interface:** Full localization support for **English** and **Hindi**.
-- **Intuitive UI:** High-contrast, accessibility-focused design inspired by modern medical equipment.
+- **Intuitive UI:** High-contrast, accessibility-focused design inspired by modern medical equipment using Tailwind CSS and Motion.
 - **Digital Prescriptions:** Instant QR-code based prescriptions sent via email (Nodemailer integration).
 
-### 4. Admin & Analytics Dashboard
+### 🛡️ Admin & Analytics Dashboard
 - **Inventory Management:** Real-time tracking of medicine stock in specific compartments.
 - **Session Audit Logs:** Detailed history of patient sessions, diagnostic outcomes, and action results.
 - **Hardware Debugger:** Low-level serial console for testing motor movements and sensor data.
@@ -99,4 +105,11 @@ npm run dev
 
 ---
 
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+Developed with ❤️ by **[Madhur Mishra](https://github.com/Madhurmishrax)**.
+
+---
 Developed with a focus on medical integrity and high-availability kiosk deployment.
