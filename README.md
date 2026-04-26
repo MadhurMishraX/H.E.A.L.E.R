@@ -1,58 +1,102 @@
-# H.E.A.L.E.R
+# H.E.A.L.E.R (Health Empowerment & Automated Learning Environment Robot)
 
-H.E.A.L.E.R is an intelligent, hardware-integrated medicine dispensing system powered by AI, designed to run in a Kiosk mode on Android tablets connected to an Arduino Mega and ESP32-CAM.
+H.E.A.L.E.R is a production-grade, hardware-integrated intelligent medical kiosk designed for remote health assistance and automated medicine dispensing. It leverages a custom-built **Smart Diagnosis Engine**, **Web Serial API** for hardware control, and a full-stack **SQLite + Express** architecture.
 
-## 1. Node.js Backend & Local Setup
+---
 
-The system consists of a Vite React frontend and an Express Node.js backend (`server.ts`) which manages the SQLite database, serial communication, and email services.
+## 🚀 Key Features
 
-**Install dependencies:**
-```sh
-npm install
-```
+### 1. Smart Diagnosis Engine (v2.0)
+- **Dynamic Branching:** 12+ diagnostic tracks (Fever, Headache, Respiratory, Gastric, UTI, etc.) with adaptive question trees.
+- **Weighted Scoring Logic:** Professional-grade algorithm that calculates confidence scores based on real-time question weights.
+- **Confidence Tiers:** 
+  - **High Confidence (>70%):** Direct dispensing recommended.
+  - **Likely Condition (35-70%):** Diagnosis provided with mandatory doctor confirmation advice.
+  - **Possible Match (<35%):** Auto-referral to medical professional.
+- **Serious Condition Guards:** Hardcoded safety flags to detect Sepsis, Severe Hypertension, or Emergencies, triggering instant "Red Alert" auto-referrals.
 
-**Set up the environment:**
-Create a `.env` file based on `.env.example`:
+### 2. Hardware-Integrated Dispensing
+- **Real-time Web Serial Control:** Communicates directly with Arduino Mega from the browser without drivers.
+- **RFID-Based Secure Access:** Patients can log in using unique RFID tags or QR codes.
+- **ESP32-CAM Documentation:** Captures patient/symptom photos during diagnostic sessions for remote doctor review.
+- **Servo-Driven Logistics:** Precision medicine dispensing via multiple compartment silos.
+
+### 3. Patient Experience
+- **Bi-lingual Interface:** Full localization support for **English** and **Hindi**.
+- **Intuitive UI:** High-contrast, accessibility-focused design inspired by modern medical equipment.
+- **Digital Prescriptions:** Instant QR-code based prescriptions sent via email (Nodemailer integration).
+
+### 4. Admin & Analytics Dashboard
+- **Inventory Management:** Real-time tracking of medicine stock in specific compartments.
+- **Session Audit Logs:** Detailed history of patient sessions, diagnostic outcomes, and action results.
+- **Hardware Debugger:** Low-level serial console for testing motor movements and sensor data.
+
+---
+
+## 🛠️ Technical Setup & Activation
+
+### 1. Software Prerequisites
+- **Node.js:** v20 or higher recommended.
+- **Yarn/NPM:** For dependency management.
+- **Browser:** Latest version of **Google Chrome** or **Edge** (Required for Web Serial API support).
+
+### 2. Environment Configuration
+Create a `.env` file in the root directory to activate critical services:
 ```env
-GMAIL_USER=your_gmail_address@gmail.com
-GMAIL_APP_PASSWORD=your_16_character_app_password
-AI_API_KEY=your_ai_api_key
+# Email Service (Nodemailer)
+GMAIL_USER=your_clinic_email@gmail.com
+GMAIL_APP_PASSWORD=xxxx_xxxx_xxxx_xxxx # Generate via Google Account > App Passwords
+
+# API Keys
+GEMINI_API_KEY=your_api_key_here # For optional AI-powered analysis extensions
+
+# Admin Access
+ADMIN_PASSWORD=admin123
 ```
 
-**Run the development server:**
-```sh
+### 3. Installation Steps
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Start the development environment
 npm run dev
+
+# 3. Access the application
+# Open http://localhost:3000 in your browser
 ```
 
-**Build for production:**
-```sh
-npm run build
-npm start
-```
+### 4. Hardware Firmware Deployment
+1. **Arduino Mega:**
+   - Locate code in `/arduino/H.E.A.L.E.R_Mega.ino`.
+   - Install `Servo`, `SPI`, `MFRC522` libraries in Arduino IDE.
+   - Upload via USB.
+2. **ESP32-CAM:**
+   - Locate code in `/arduino/H.E.A.L.E.R_ESP32CAM.ino`.
+   - Setup FTDI programmer and select `AI Thinker ESP32-CAM`.
+   - Flash firmware.
 
-## 2. Hardware Setup
+---
 
-### Arduino Mega Firmware
-The firmware for controlling the servo motors and reading RFID tags is located in `/arduino/H.E.A.L.E.R_Mega.ino`.
-1. Open the Arduino IDE.
-2. Install the necessary libraries: `Servo`, `SPI`, `MFRC522`.
-3. Connect your hardware as documented in the `.ino` file.
-4. Select Arduino Mega and flash the code via USB.
+## 🏗️ Hardware Architecture & Connection
+- **Tablet to Arduino:** Connect via USB-OTG. The browser will prompt for permission to access "Arduino Mega".
+- **Serial Protocol:** Uses `9600` baud rate with custom command packets (e.g., `DISPENSE:1`).
+- **Indicator Status:** 
+  - 🟢 **Online:** Active serial communication found.
+  - 🔴 **Offline:** Check OTG connection or browser permissions.
 
-### ESP32-CAM Firmware
-The camera module is triggered by the Arduino to capture photos securely. Firmware is in `/arduino/H.E.A.L.E.R_ESP32CAM.ino`.
-1. Use an FTDI programmer to connect to the ESP32-CAM.
-2. In Arduino IDE, select the `AI Thinker ESP32-CAM` board.
-3. Flash the code (remember to short GPIO 0 to GND during flash).
-4. Remove the jumper and hit Reset to start running.
+---
 
-### Connect Hardware to Tablet
-Connect the Arduino Mega via a USB OTG cable to the tablet. The Web Serial API accessed from Chrome/Edge on the tablet will communicate directly to the Arduino.
+## 📊 Feature Reference List
+| Component | Technology | Role |
+| :--- | :--- | :--- |
+| **Frontend** | React 19, Motion, Tailwind | User interface & animations |
+| **Backend** | Express, Node.js | API routing & Email service |
+| **Database** | SQLite3 | Local storage for patients, logs, and settings |
+| **Logic** | DiagnosisEngine v2 | Clinical decision support system |
+| **Control** | Web Serial API | Direct browser-to-hardware data bridge |
+| **Network** | Nodemailer | Automated prescription delivery |
 
-## 3. How to Debug Serial Communication
+---
 
-If the text "Hardware Offline" appears in the top right corner:
-1. Tap the indicator to bring up troubleshooting steps.
-2. Ensure the USB cable supports data transfer, not just charging.
-3. Ensure the browser has permissions to access USB/Serial devices. In Chrome, a popup appears; ensure you choose the Arduino device.
-4. For deeper debugging, open the Admin Dashboard within the app and use the "Hardware Debug Log" in the Compartments tab to send and receive raw serial commands manually.
+Developed with a focus on medical integrity and high-availability kiosk deployment.
