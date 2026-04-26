@@ -535,8 +535,8 @@ const PatientsTab = () => {
                       <div>
                         <h4 className="text-xl font-bold text-brand-secondary mb-1">{s.diagnosed_disease}</h4>
                         <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">
-                          Confidence: <span className={s.confidence_score >= 60 ? 'text-brand-success' : 'text-brand-warning'}>
-                            {s.confidence_score >= 80 ? 'High' : s.confidence_score >= 60 ? 'Moderate' : 'Review'}
+                          Confidence: <span className={s.confidence_score >= 70 ? 'text-brand-success' : s.confidence_score >= 50 ? 'text-brand-primary' : 'text-brand-warning'}>
+                            {s.confidence_score >= 70 ? 'High' : s.confidence_score >= 50 ? 'Moderate' : 'Review'}
                           </span> <span className="mx-2 opacity-30">•</span> Action: <span className="text-brand-primary">{s.action_taken}</span>
                         </p>
                       </div>

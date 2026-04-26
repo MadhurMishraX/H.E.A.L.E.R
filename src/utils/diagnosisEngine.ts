@@ -13,6 +13,7 @@ export interface Question {
   type: 'yes_no' | 'multiple_choice' | 'multiple_select';
   options: Option[];
   camera_trigger?: boolean;
+  max_weight: number;
 }
 
 export const DISEASE_PRESCRIPTION_MAP: Record<string, any> = {
@@ -159,9 +160,10 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "What is bothering you the most today? Select up to 3.",
     text_hi: "आज आपको सबसे अधिक क्या परेशान कर रहा है? अधिकतम 3 चुनें।",
     type: 'multiple_select',
+    max_weight: 5,
     options: [
       { text_en: "Fever or feeling very hot", text_hi: "बुखार या बहुत गर्मी महसूस होना", symptom_weights: { "Fever/Flu": 3, "Severe Infection/Sepsis": 2, "Common Cold/URI": 1 } },
-      { text_en: "Headache or head pain", text_hi: "सिरदर्द या सिर में दर्द", symptom_weights: { "Migraine/Tension Headache": 3, "Hypertension": 2, "Fever/Flu": 1 } },
+      { text_en: "Headache or head pain", text_hi: "सिरदर्द या सिर में दर्द", symptom_weights: { "Migraine/Tension Headache": 4, "Hypertension": 1, "Fever/Flu": 1 } },
       { text_en: "Runny nose, sneezing, sore throat", text_hi: "नाक बहना, छींक आना, गले में खराश", symptom_weights: { "Allergic Rhinitis": 3, "Common Cold/URI": 3, "Fever/Flu": 1 } },
       { text_en: "Stomach pain, nausea, vomiting, or loose motions", text_hi: "पेट दर्द, मतली, उल्टी, या दस्त", symptom_weights: { "Gastroenteritis": 3, "Acidity/GERD": 2 } },
       { text_en: "Skin rash, itching, or a wound", text_hi: "त्वचा पर दाने, खुजली, या घाव", symptom_weights: { "Fungal Skin Infection": 3, "Allergic Rhinitis": 1, "Minor Wound/Infection": 1 } },
@@ -178,6 +180,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "How high is your fever?",
     text_hi: "आपका बुखार कितना है?",
     type: 'multiple_choice',
+    max_weight: 3,
     options: [
       { text_en: "Mild warmth, no thermometer reading", text_hi: "हल्की गर्मी, थर्मामीटर रीडिंग नहीं", symptom_weights: { "Fever/Flu": 1, "Common Cold/URI": 2 } },
       { text_en: "Around 100-101°F (moderate)", text_hi: "लगभग 100-101°F (मध्यम)", symptom_weights: { "Fever/Flu": 3 } },
@@ -190,6 +193,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Along with fever, do you have body aches and fatigue?",
     text_hi: "बुखार के साथ क्या आपको शरीर में दर्द और थकान है?",
     type: 'multiple_choice',
+    max_weight: 3,
     options: [
       { text_en: "Yes, severe body aches and I feel very weak", text_hi: "हाँ, शरीर में तेज दर्द और मैं बहुत कमजोरी महसूस कर रहा हूँ", symptom_weights: { "Fever/Flu": 3, "Severe Infection/Sepsis": 2 } },
       { text_en: "Mild tiredness only", text_hi: "केवल हल्की थकान", symptom_weights: { "Fever/Flu": 1, "Common Cold/URI": 2 } },
@@ -201,6 +205,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Do you have a runny nose or sore throat as well?",
     text_hi: "क्या आपको नाक बहने या गले में खराश भी है?",
     type: 'multiple_choice',
+    max_weight: 3,
     options: [
       { text_en: "Yes, runny nose and sneezing", text_hi: "हाँ, नाक बहना और छींक आना", symptom_weights: { "Common Cold/URI": 3, "Allergic Rhinitis": 1 } },
       { text_en: "Yes, sore throat", text_hi: "हाँ, गले में खराश", symptom_weights: { "Fever/Flu": 2, "Common Cold/URI": 1 } },
@@ -212,6 +217,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "How many days have you had these symptoms?",
     text_hi: "आपको ये लक्षण कितने दिनों से हैं?",
     type: 'multiple_choice',
+    max_weight: 4,
     options: [
       { text_en: "Less than 2 days", text_hi: "2 दिनों से कम", symptom_weights: { "Fever/Flu": 2 } },
       { text_en: "2 to 5 days", text_hi: "2 से 5 दिन", symptom_weights: { "Fever/Flu": 1 } },
@@ -225,9 +231,10 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Where exactly is your headache?",
     text_hi: "आपका सिरदर्द वास्तव में कहाँ है?",
     type: 'multiple_choice',
+    max_weight: 6,
     options: [
-      { text_en: "One side of the head only", text_hi: "केवल सिर के एक तरफ", symptom_weights: { "Migraine/Tension Headache": 4 } },
-      { text_en: "Both sides, like a tight band around the head", text_hi: "दोनों तरफ, जैसे सिर के चारों ओर एक तंग पट्टी", symptom_weights: { "Migraine/Tension Headache": 2 } },
+      { text_en: "One side of the head only", text_hi: "केवल सिर के एक तरफ", symptom_weights: { "Migraine/Tension Headache": 6 } },
+      { text_en: "Both sides, like a tight band around the head", text_hi: "दोनों तरफ, जैसे सिर के चारों ओर एक तंग पट्टी", symptom_weights: { "Migraine/Tension Headache": 5 } },
       { text_en: "Back of the head and neck", text_hi: "सिर और गर्दन के पीछे", symptom_weights: { "Hypertension": 3 } },
       { text_en: "All over / cannot pinpoint", text_hi: "हर जगह / सटीक नहीं बता सकता", symptom_weights: { "Fever/Flu": 1, "Migraine/Tension Headache": 1 } }
     ]
@@ -237,9 +244,10 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "How severe is the headache on a scale?",
     text_hi: "सिरदर्द कितना गंभीर है?",
     type: 'multiple_choice',
+    max_weight: 4,
     options: [
       { text_en: "Mild, manageable", text_hi: "हल्का, प्रबंधनीय", symptom_weights: { "Migraine/Tension Headache": 2 } },
-      { text_en: "Moderate, affecting my daily activity", text_hi: "मध्यम, मेरी दैनिक गतिविधि को प्रभावित कर रहा है", symptom_weights: { "Migraine/Tension Headache": 3 } },
+      { text_en: "Moderate, affecting my daily activity", text_hi: "मध्यम, मेरी दैनिक गतिविधि को प्रभावित कर रहा है", symptom_weights: { "Migraine/Tension Headache": 4 } },
       { text_en: "Very severe, worst headache I've had", text_hi: "बहुत गंभीर, सबसे बुरा सिरदर्द जो मुझे हुआ है", symptom_weights: { "Hypertension": 3, "Severe Infection/Sepsis": 1 } }
     ]
   },
@@ -248,8 +256,9 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Do you also have any of these?",
     text_hi: "क्या आपको इनमें से कुछ भी है?",
     type: 'multiple_choice',
+    max_weight: 6,
     options: [
-      { text_en: "Nausea and sensitivity to light or sound", text_hi: "मतली और प्रकाश या ध्वनि के प्रति संवेदनशीलता", symptom_weights: { "Migraine/Tension Headache": 4 } },
+      { text_en: "Nausea and sensitivity to light or sound", text_hi: "मतली और प्रकाश या ध्वनि के प्रति संवेदनशीलता", symptom_weights: { "Migraine/Tension Headache": 6 } },
       { text_en: "Dizziness or blurred vision", text_hi: "चक्कर आना या धुंधली दृष्टि", symptom_weights: { "Hypertension": 4 }, serious_flag: true },
       { text_en: "Neck stiffness and fever together", text_hi: "गर्दन में अकड़न और बुखार एक साथ", symptom_weights: { "Severe Infection/Sepsis": 4 }, serious_flag: true },
       { text_en: "None of these", text_hi: "इनमें से कोई नहीं", symptom_weights: { "Migraine/Tension Headache": 1 } }
@@ -260,6 +269,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Do you have a history of high blood pressure or similar headaches before?",
     text_hi: "क्या आपको पहले कभी उच्च रक्तचाप या इसी तरह के सिरदर्द का इतिहास रहा है?",
     type: 'multiple_choice',
+    max_weight: 3,
     options: [
       { text_en: "Yes, I have high BP", text_hi: "हाँ, मुझे हाई बीपी है", symptom_weights: { "Hypertension": 3 } },
       { text_en: "Yes, I get migraines sometimes", text_hi: "हाँ, मुझे कभी-कभी माइग्रेन होता है", symptom_weights: { "Migraine/Tension Headache": 3 } },
@@ -272,6 +282,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "When do your symptoms get worse?",
     text_hi: "आपके लक्षण कब खराब हो जाते हैं?",
     type: 'multiple_choice',
+    max_weight: 4,
     options: [
       { text_en: "In specific places like dusty rooms, gardens, near animals", text_hi: "धूल भरे कमरे, बगीचों, जानवरों के पास जैसी विशिष्ट जगहों पर", symptom_weights: { "Allergic Rhinitis": 4 } },
       { text_en: "In cold weather or after getting wet", text_hi: "ठंड के मौसम में या भीगने के बाद", symptom_weights: { "Common Cold/URI": 4 } },
@@ -283,6 +294,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Do your eyes also itch or water?",
     text_hi: "क्या आपकी आँखों में खुजली या पानी भी आता है?",
     type: 'yes_no',
+    max_weight: 4,
     options: [
       { text_en: "Yes, eyes also itch and water", text_hi: "हाँ, आँखों में खुजली और पानी भी आता है", symptom_weights: { "Allergic Rhinitis": 4 } },
       { text_en: "No", text_hi: "नहीं", symptom_weights: { "Common Cold/URI": 3 } }
@@ -293,6 +305,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Do you also have fever?",
     text_hi: "क्या आपको बुखार भी है?",
     type: 'yes_no',
+    max_weight: 3,
     options: [
       { text_en: "Yes", text_hi: "हाँ", symptom_weights: { "Common Cold/URI": 3, "Fever/Flu": 2 } },
       { text_en: "No", text_hi: "नहीं", symptom_weights: { "Allergic Rhinitis": 3 } }
@@ -304,6 +317,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "What is your main stomach complaint?",
     text_hi: "आपकी पेट की मुख्य शिकायत क्या है?",
     type: 'multiple_choice',
+    max_weight: 4,
     options: [
       { text_en: "Loose motions or watery stools", text_hi: "दस्त या पानी जैसा मल", symptom_weights: { "Gastroenteritis": 4 } },
       { text_en: "Vomiting", text_hi: "उल्टी", symptom_weights: { "Gastroenteritis": 3 } },
@@ -317,6 +331,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Did it start after eating outside food or something unusual?",
     text_hi: "क्या यह बाहर का खाना खाने या कुछ असामान्य खाने के बाद शुरू हुआ?",
     type: 'yes_no',
+    max_weight: 3,
     options: [
       { text_en: "Yes", text_hi: "हाँ", symptom_weights: { "Gastroenteritis": 3 } },
       { text_en: "No", text_hi: "नहीं", symptom_weights: { "Acidity/GERD": 2 } }
@@ -327,6 +342,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "How many times have you passed loose stools or vomited today?",
     text_hi: "आज आपने कितनी बार दस्त किए या उल्टी की?",
     type: 'multiple_choice',
+    max_weight: 4,
     options: [
       { text_en: "1-2 times", text_hi: "1-2 बार", symptom_weights: { "Gastroenteritis": 2 } },
       { text_en: "3-5 times", text_hi: "3-5 बार", symptom_weights: { "Gastroenteritis": 3 } },
@@ -339,6 +355,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Do you have fever along with the stomach issue?",
     text_hi: "क्या आपको पेट की समस्या के साथ बुखार है?",
     type: 'yes_no',
+    max_weight: 3,
     options: [
       { text_en: "Yes", text_hi: "हाँ", symptom_weights: { "Gastroenteritis": 3, "Severe Infection/Sepsis": 2 } },
       { text_en: "No", text_hi: "नहीं", symptom_weights: { "Acidity/GERD": 2, "Gastroenteritis": 1 } }
@@ -351,6 +368,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_hi: "क्या आप त्वचा की समस्या का वर्णन कर सकते हैं?",
     type: 'multiple_choice',
     camera_trigger: true,
+    max_weight: 5,
     options: [
       { text_en: "A circular or ring-shaped rash that is itchy", text_hi: "एक गोलाकार या अंगूठी के आकार का दाना जिसमें खुजली होती है", symptom_weights: { "Fungal Skin Infection": 5 } },
       { text_en: "Red patches that appeared suddenly, possibly after eating something or using a new product", text_hi: "लाल धब्बे जो अचानक दिखाई दिए, संभवतः कुछ खाने या नए उत्पाद का उपयोग करने के बाद", symptom_weights: { "Allergic Rhinitis": 3 } },
@@ -363,6 +381,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "How long has the skin issue been there?",
     text_hi: "त्वचा की समस्या कितने समय से है?",
     type: 'multiple_choice',
+    max_weight: 3,
     options: [
       { text_en: "Less than 2 days", text_hi: "2 दिनों से कम", symptom_weights: { "Minor Wound/Infection": 1, "Allergic Rhinitis": 1 } },
       { text_en: "More than a week", text_hi: "एक सप्ताह से अधिक", symptom_weights: { "Fungal Skin Infection": 3 } },
@@ -374,6 +393,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Is the affected area in a moist or sweaty part of the body (between toes, groin, underarms)?",
     text_hi: "क्या प्रभावित क्षेत्र शरीर के नम या पसीने वाले हिस्से (पैर की उंगलियों के बीच, कमर, बगल) में है?",
     type: 'yes_no',
+    max_weight: 4,
     options: [
       { text_en: "Yes", text_hi: "हाँ", symptom_weights: { "Fungal Skin Infection": 4 } },
       { text_en: "No", text_hi: "नहीं", symptom_weights: { "Allergic Rhinitis": 2, "Minor Wound/Infection": 1 } }
@@ -385,6 +405,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "What does the eye problem look like?",
     text_hi: "आँख की समस्या कैसी दिखती है?",
     type: 'multiple_choice',
+    max_weight: 5,
     options: [
       { text_en: "Red, sticky discharge, especially in the morning", text_hi: "लाल, चिपचिपा स्राव, विशेष रूप से सुबह में", symptom_weights: { "Conjunctivitis": 5 } },
       { text_en: "Itchy and watery with no discharge", text_hi: "बिना किसी स्राव के खुजली और पानी आना", symptom_weights: { "Allergic Rhinitis": 3 } },
@@ -396,6 +417,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Is it one eye or both eyes?",
     text_hi: "क्या यह एक आँख है या दोनों आँखें?",
     type: 'multiple_choice',
+    max_weight: 4,
     options: [
       { text_en: "Both eyes", text_hi: "दोनों आँखें", symptom_weights: { "Conjunctivitis": 3, "Allergic Rhinitis": 2 } },
       { text_en: "One eye only", text_hi: "केवल एक आँख", symptom_weights: { "Conjunctivitis": 4 } }
@@ -407,6 +429,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "What does your cough feel like?",
     text_hi: "आपकी खांसी कैसी महसूस होती है?",
     type: 'multiple_choice',
+    max_weight: 5,
     options: [
       { text_en: "Wet cough with mucus or phlegm", text_hi: "बलगम या कफ के साथ गीली खांसी", symptom_weights: { "Acute Bronchitis": 4 } },
       { text_en: "Dry cough", text_hi: "सूखी खांसी", symptom_weights: { "Common Cold/URI": 2, "Asthma/Wheezing": 2 } },
@@ -419,6 +442,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Do you have a history of asthma or similar breathing episodes?",
     text_hi: "क्या आपको अस्थमा या इसी तरह के सांस लेने के प्रकरणों का इतिहास रहा है?",
     type: 'yes_no',
+    max_weight: 4,
     options: [
       { text_en: "Yes", text_hi: "हाँ", symptom_weights: { "Asthma/Wheezing": 4 } },
       { text_en: "No", text_hi: "नहीं", symptom_weights: { "Acute Bronchitis": 3 } }
@@ -429,6 +453,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Is there fever along with the cough?",
     text_hi: "क्या खांसी के साथ बुखार है?",
     type: 'yes_no',
+    max_weight: 3,
     options: [
       { text_en: "Yes", text_hi: "हाँ", symptom_weights: { "Acute Bronchitis": 3, "Fever/Flu": 2 } },
       { text_en: "No", text_hi: "नहीं", symptom_weights: { "Asthma/Wheezing": 2 } }
@@ -440,6 +465,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Was there an injury, fall, or overexertion recently?",
     text_hi: "क्या हाल ही में कोई चोट, गिरना या अधिक परिश्रम हुआ था?",
     type: 'yes_no',
+    max_weight: 5,
     options: [
       { text_en: "Yes, I hurt myself or exercised very hard", text_hi: "हाँ, मैंने खुद को चोट पहुँचाई या बहुत कठिन व्यायाम किया", symptom_weights: { "Muscle Strain/Sprain": 5 } },
       { text_en: "No injury, pain came on its own", text_hi: "कोई चोट नहीं, दर्द अपने आप आ गया", symptom_weights: { "Fever/Flu": 2, "Hypertension": 1 } }
@@ -450,6 +476,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Where is the pain?",
     text_hi: "दर्द कहाँ है?",
     type: 'multiple_choice',
+    max_weight: 3,
     options: [
       { text_en: "Specific muscle (leg, arm, back)", text_hi: "विशिष्ट मांसपेशी (पैर, हाथ, पीठ)", symptom_weights: { "Muscle Strain/Sprain": 3 } },
       { text_en: "Joints (knee, shoulder, wrist)", text_hi: "जोड़ (घुटना, कंधा, कलाई)", symptom_weights: { "Muscle Strain/Sprain": 2 } },
@@ -461,6 +488,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Is there any swelling or bruising at the site of pain?",
     text_hi: "क्या दर्द वाली जगह पर कोई सूजन या नीला निशान है?",
     type: 'yes_no',
+    max_weight: 3,
     options: [
       { text_en: "Yes", text_hi: "हाँ", symptom_weights: { "Muscle Strain/Sprain": 3 } },
       { text_en: "No", text_hi: "नहीं", symptom_weights: { "Fever/Flu": 2 } }
@@ -472,6 +500,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Do you feel burning or pain while urinating?",
     text_hi: "क्या आपको पेशाब करते समय जलन या दर्द महसूस होता है?",
     type: 'multiple_choice',
+    max_weight: 5,
     options: [
       { text_en: "Yes, strong burning sensation", text_hi: "हाँ, तेज जलन महसूस होना", symptom_weights: { "Urinary Tract Infection": 5 } },
       { text_en: "Mild discomfort only", text_hi: "केवल हल्का असहज महसूस होना", symptom_weights: { "Urinary Tract Infection": 3 } },
@@ -483,6 +512,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Is your urine cloudy, dark, or has an unusual smell?",
     text_hi: "क्या आपका पेशाब धुंधला, गहरा है, या उसमें कोई असामान्य गंध है?",
     type: 'yes_no',
+    max_weight: 4,
     options: [
       { text_en: "Yes", text_hi: "हाँ", symptom_weights: { "Urinary Tract Infection": 4 } },
       { text_en: "No", text_hi: "नहीं", symptom_weights: { "Urinary Tract Infection": 1 } }
@@ -493,6 +523,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Do you have lower abdominal pain or pain in the back/sides?",
     text_hi: "क्या आपको निचले पेट में दर्द या पीठ/किनारों में दर्द है?",
     type: 'multiple_choice',
+    max_weight: 3,
     options: [
       { text_en: "Yes, lower abdomen pain", text_hi: "हाँ, निचले पेट में दर्द", symptom_weights: { "Urinary Tract Infection": 3 } },
       { text_en: "Yes, back or side pain (flank pain)", text_hi: "हाँ, पीठ या किनारे का दर्द (फ्लैंक दर्द)", symptom_weights: { "Urinary Tract Infection": 3, "Severe Infection/Sepsis": 2 } },
@@ -505,6 +536,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Are you currently experiencing any of these RIGHT NOW?",
     text_hi: "क्या आप वर्तमान में अभी इनमें से किसी का अनुभव कर रहे हैं?",
     type: 'multiple_choice',
+    max_weight: 5,
     options: [
       { text_en: "Severe chest pain", text_hi: "सीने में तेज दर्द", symptom_weights: { "Hypertension": 5 }, serious_flag: true },
       { text_en: "Sudden severe headache unlike any before", text_hi: "अचानक तेज सिरदर्द जो पहले कभी नहीं हुआ", symptom_weights: { "Hypertension": 5 }, serious_flag: true },
@@ -517,6 +549,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Do you have a known history of high blood pressure?",
     text_hi: "क्या आपको उच्च रक्तचाप का कोई ज्ञात इतिहास है?",
     type: 'multiple_choice',
+    max_weight: 4,
     options: [
       { text_en: "Yes, diagnosed by a doctor", text_hi: "हाँ, डॉक्टर द्वारा निदान किया गया", symptom_weights: { "Hypertension": 4 } },
       { text_en: "No known history", text_hi: "कोई ज्ञात इतिहास नहीं", symptom_weights: { "Hypertension": 2 } },
@@ -529,6 +562,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "How long have you been experiencing these symptoms overall?",
     text_hi: "कुल मिलाकर आप इन लक्षणों का अनुभव कब से कर रहे हैं?",
     type: 'multiple_choice',
+    max_weight: 3,
     options: [
       { text_en: "Started today", text_hi: "आज शुरू हुआ", symptom_weights: {} },
       { text_en: "2 to 4 days", text_hi: "2 से 4 दिन", symptom_weights: {} },
@@ -541,6 +575,7 @@ export const QUESTION_TREE: Record<string, Question> = {
     text_en: "Do you have any of these alongside your main symptoms? (Select all that apply)",
     text_hi: "क्या आपके मुख्य लक्षणों के साथ इनमें से कोई भी है? (सभी लागू चुनें)",
     type: 'multiple_select',
+    max_weight: 2,
     options: [
       { text_en: "High fever (102°F or above)", text_hi: "तेज बुखार (102°F या उससे ऊपर)", symptom_weights: { "Fever/Flu": 2, "Severe Infection/Sepsis": 2 } },
       { text_en: "Weakness or cannot get out of bed", text_hi: "कमजोरी या बिस्तर से नहीं उठ पाना", symptom_weights: { "Severe Infection/Sepsis": 2 } },
@@ -563,15 +598,34 @@ export function calculateDiagnosis(sessionAnswers: any[]) {
   DISEASES.forEach(d => scores[d] = 0);
   
   let isSeriousForced = false;
-  let totalPossible = 0;
+  let totalPossibleShown = 0;
+  
+  // Rule 5 flags
+  let hasChestPain = false;
+  let hasBlurredVision = false;
+  let hasLongDurationHighFever = false;
+  let hasQ0Serious = false;
+  let hasBPHistory = false;
+
+  const tracksTaken = new Set<string>();
 
   sessionAnswers.forEach(ans => {
     const question = QUESTION_TREE[ans.question_id];
     if (!question) return;
 
-    // Track total possible weights shown to user for confidence calculation
-    // This is a bit complex with branching, so let's simplify possible score
-    totalPossible += 5; // Normalize assumption
+    totalPossibleShown += question.max_weight || 5;
+
+    // Detect track
+    if (ans.question_id.startsWith('Q_F')) tracksTaken.add('F');
+    if (ans.question_id.startsWith('Q_H')) tracksTaken.add('H');
+    if (ans.question_id.startsWith('Q_N')) tracksTaken.add('N');
+    if (ans.question_id.startsWith('Q_S')) tracksTaken.add('S');
+    if (ans.question_id.startsWith('Q_SK')) tracksTaken.add('SK');
+    if (ans.question_id.startsWith('Q_E')) tracksTaken.add('E');
+    if (ans.question_id.startsWith('Q_B')) tracksTaken.add('B');
+    if (ans.question_id.startsWith('Q_M')) tracksTaken.add('M');
+    if (ans.question_id.startsWith('Q_U')) tracksTaken.add('U');
+    if (ans.question_id.startsWith('Q_BP')) tracksTaken.add('BP');
 
     const selectedOptions = Array.isArray(ans.selected_option) ? ans.selected_option : [ans.selected_option];
     
@@ -581,6 +635,21 @@ export function calculateDiagnosis(sessionAnswers: any[]) {
 
       if (option.serious_flag) isSeriousForced = true;
 
+      // Rule 5 specific flag checks
+      if (ans.question_id === 'Q0' && optIdx === 9) hasQ0Serious = true;
+      if (ans.question_id === 'Q_F4' && (optIdx === 2 || optIdx === 3)) {
+          hasLongDurationHighFever = true; // Simplified durations
+      }
+      if (ans.question_id === 'Q_BP1') {
+          if (optIdx === 0) hasChestPain = true;
+          if (optIdx === 3) hasBlurredVision = true;
+          if (optIdx === 1) hasChestPain = true; // Severe headache from hypertension
+      }
+      if (ans.question_id === 'Q_H3' && optIdx === 1) hasBlurredVision = true;
+      if (ans.question_id === 'Q_E1' && optIdx === 2) hasBlurredVision = true;
+      if (ans.question_id === 'Q_B1' && optIdx === 3) hasChestPain = true; // Shortness of breath
+      if (ans.question_id === 'Q_BP2' && optIdx === 0) hasBPHistory = true;
+
       Object.entries(option.symptom_weights).forEach(([disease, weight]) => {
         if (scores[disease] !== undefined) {
           scores[disease] += weight;
@@ -589,31 +658,96 @@ export function calculateDiagnosis(sessionAnswers: any[]) {
     });
   });
 
-  const results = DISEASES.map(disease => {
-    const score = scores[disease];
-    const confidence = Math.min((score / 15) * 100, 100); // 15 as an arbitrary normalization floor
+  // Track winner bonuses (Rule 4)
+  tracksTaken.forEach(track => {
+    if (track === 'F' && !isSeriousForced) scores["Fever/Flu"] += 10;
+    if (track === 'H' && !isSeriousForced) scores["Migraine/Tension Headache"] += 10;
+    if (track === 'N') {
+        const ar = scores["Allergic Rhinitis"] || 0;
+        const cc = scores["Common Cold/URI"] || 0;
+        if (ar >= cc) scores["Allergic Rhinitis"] += 10;
+        else scores["Common Cold/URI"] += 10;
+    }
+    if (track === 'S') {
+        const ge = scores["Gastroenteritis"] || 0;
+        const ac = scores["Acidity/GERD"] || 0;
+        if (ge >= ac) scores["Gastroenteritis"] += 10;
+        else scores["Acidity/GERD"] += 10;
+    }
+    if (track === 'SK') {
+        const hasWound = sessionAnswers.some(ans => ans.question_id === 'Q_SK1' && ans.selected_option === 2);
+        if (!hasWound) scores["Fungal Skin Infection"] += 10;
+    }
+    if (track === 'E') scores["Conjunctivitis"] += 10;
+    if (track === 'B') {
+        const ab = scores["Acute Bronchitis"] || 0;
+        const as = scores["Asthma/Wheezing"] || 0;
+        if (ab >= as) scores["Acute Bronchitis"] += 10;
+        else scores["Asthma/Wheezing"] += 10;
+    }
+    if (track === 'M') scores["Muscle Strain/Sprain"] += 10;
+    if (track === 'U') scores["Urinary Tract Infection"] += 10;
+    if (track === 'BP') {
+        scores["Hypertension"] += 10;
+        isSeriousForced = true;
+    }
+  });
+
+  // Rule 5: Serious Condition Filter
+  const canDiagnoseSerious = hasChestPain || hasBlurredVision || hasLongDurationHighFever || hasQ0Serious || hasBPHistory;
+
+  const sortedResults = DISEASES.map(disease => {
+    let score = scores[disease];
+    
+    // Rule 5 logic: penalize serious if not qualified
+    if ((disease === 'Hypertension' || disease === 'Severe Infection/Sepsis') && !canDiagnoseSerious) {
+       score = -50; // Force it out
+    }
+
+    const confidence = Math.min((score / (totalPossibleShown || 1)) * 100, 100);
     return { disease, score, confidence };
   }).sort((a, b) => b.score - a.score);
 
-  const top = results[0];
+  const top = sortedResults[0];
   let diagnosis = top.disease;
+  let confidence = Math.max(top.confidence, 0);
   let action: "dispense" | "refer" | "unavailable" = DISEASE_PRESCRIPTION_MAP[diagnosis]?.is_dispensable ? "dispense" : "refer";
   let is_serious = DISEASE_PRESCRIPTION_MAP[diagnosis]?.is_serious || isSeriousForced;
+  let note = "";
 
-  if (top.confidence < 60) {
-    diagnosis = "Inconclusive — Doctor Referral Required";
-    action = "refer";
-    is_serious = true;
+  // Rule 2 & 6: Always produce diagnosis + labels
+  let confidenceLabel = "Possible Condition — Please Consult a Doctor";
+  let labelColor = "amber";
+
+  if (confidence > 70) {
+      confidenceLabel = "High Confidence Diagnosis";
+      labelColor = "green";
+  } else if (confidence >= 50) {
+      confidenceLabel = "Good Match";
+      labelColor = "blue";
+  } else if (confidence >= 35) {
+      confidenceLabel = "Likely Condition — Doctor Confirmation Advised";
+      labelColor = "amber";
+      action = "refer";
+      note = "Doctor consultation recommended alongside this prescription.";
+  } else {
+      confidenceLabel = "Possible Condition — Please Consult a Doctor";
+      labelColor = "amber";
+      action = "refer";
+      note = "Doctor consultation recommended alongside this prescription.";
   }
 
   if (is_serious) action = "refer";
 
   return {
     diagnosis,
-    confidence: top.confidence,
-    top3: results.slice(0, 3),
+    confidence,
+    confidenceLabel,
+    labelColor,
+    top3: sortedResults.slice(0, 3),
     is_serious,
     action,
+    note,
     gemini_used: false,
     gemini_result: null
   };

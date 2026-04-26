@@ -178,8 +178,22 @@ export const PrescriptionScreen = () => {
     );
   }
 
-  const isInconclusive = currentSession?.diagnosed_disease === "Inconclusive — Doctor Referral Required";
+  const confidence = currentSession?.confidence_score || 0;
   const isSerious = diseaseMap?.is_serious === 1 || currentSession?.action_taken === 'auto_referred';
+
+  let confidenceLabel = "Possible Condition — Please Consult a Doctor";
+  let labelColorClass = "from-amber-500 to-amber-600";
+  
+  if (confidence > 70) {
+      confidenceLabel = "High Confidence Diagnosis";
+      labelColorClass = "from-brand-success to-green-600";
+  } else if (confidence >= 50) {
+      confidenceLabel = "Good Match";
+      labelColorClass = "from-brand-primary to-blue-600";
+  } else if (confidence >= 35) {
+      confidenceLabel = "Likely Condition — Doctor Confirmation Advised";
+      labelColorClass = "from-amber-400 to-amber-500";
+  }
 
   return (
     <motion.div 
@@ -224,10 +238,10 @@ export const PrescriptionScreen = () => {
               <h3 className="text-[32px] font-bold text-text-primary m-0 leading-none">
                 {currentSession?.diagnosed_disease}
               </h3>
-              <div className={`px-4 py-1.5 rounded-full flex items-center gap-2 shadow-[0_0_15px_rgba(0,0,0,0.2)] ${isInconclusive ? 'bg-gradient-to-r from-[#FFB300] to-[#FF8F00]' : 'bg-gradient-to-r from-brand-success to-[#00C853]'}`}>
-                {isInconclusive ? <AlertCircle size={16} /> : <CheckCircle2 size={16} className="text-white" />}
+              <div className={`px-4 py-1.5 rounded-full flex items-center gap-2 shadow-[0_0_15px_rgba(0,0,0,0.2)] bg-gradient-to-r ${labelColorClass}`}>
+                {confidence >= 50 ? <CheckCircle2 size={16} className="text-white" /> : <AlertCircle size={16} className="text-white" />}
                 <span className="text-xs font-bold uppercase tracking-widest text-white">
-                  {currentSession?.confidence_score >= 60 ? t('prescription.successfulDiagnosis') : t('prescription.doctorReview')}
+                  {confidenceLabel}
                 </span>
               </div>
             </div>
@@ -277,13 +291,19 @@ export const PrescriptionScreen = () => {
             </div>
 
             {isSerious && (
-              <div className="bg-[rgba(255,82,82,0.1)] p-5 rounded-2xl border border-brand-danger flex items-center gap-5 animate-pulse">
-                <AlertCircle className="text-brand-danger shrink-0" size={28} />
-                <p className="text-brand-danger font-bold text-sm leading-relaxed m-0">
+              <div className="bg-[rgba(255,82,82,0.1)] p-6 rounded-2xl border-2 border-brand-danger flex flex-col gap-3 animate-pulse">
+                <div className="flex items-center gap-4">
+                  <AlertCircle className="text-brand-danger shrink-0" size={32} />
+                  <h5 className="text-brand-danger font-black text-xl uppercase tracking-widest m-0">Urgent: Doctor Consultation Required</h5>
+                </div>
+                <p className="text-brand-danger font-bold text-sm leading-relaxed m-0 pl-12">
                   {currentSession.action_taken === 'auto_referred' 
                     ? t('prescription.autoReferralText').replace('{{name}}', settings.doctor_name || 'Doctor') 
-                    : t('prescription.seriousWarning')}
+                    : "This condition requires immediate professional medical attention. Please consult a doctor immediately. Auto-referral has been initiated."}
                 </p>
+                <div className="flex items-center gap-2 pl-12 text-brand-danger/70 text-xs font-bold uppercase tracking-widest">
+                  <Check size={14} /> Referral Confirmation Sent to {settings.doctor_email || 'Clinic'}
+                </div>
               </div>
             )}
 
