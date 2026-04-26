@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { QUESTIONS, calculateDiagnosis } from '../utils/diagnosisEngine';
+import { QUESTION_TREE, calculateDiagnosis, getNextQuestion } from '../utils/diagnosisEngine';
 import { getAgeGroup } from '../utils/ageUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -13,6 +13,7 @@ import {
   Activity, 
   Info,
   CheckCircle2,
+  Check,
   X
 } from 'lucide-react';
 
@@ -20,8 +21,9 @@ export const DiagnosisScreen = () => {
   const { t, language, currentPatient, setCurrentSession } = useAppContext();
   const navigate = useNavigate();
 
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [currentQuestionId, setCurrentQuestionId] = useState<string>('Q0');
+  const [sessionAnswers, setSessionAnswers] = useState<any[]>([]);
+  const [selectedOptions, setSelectedOptions] = useState<number[]>([]);
   const [diseaseScores, setDiseaseScores] = useState<Record<string, number>>({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzingTextIndex, setAnalyzingTextIndex] = useState(0);
@@ -32,8 +34,9 @@ export const DiagnosisScreen = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const currentQuestion = QUESTIONS[currentQuestionIndex];
-  const progress = ((currentQuestionIndex) / QUESTIONS.length) * 100;
+  const currentQuestion = QUESTION_TREE[currentQuestionId];
+  const totalEstimatedSteps = 10;
+  const progress = (sessionAnswers.length / totalEstimatedSteps) * 100;
 
   useEffect(() => {
     if (!currentPatient) {
@@ -50,38 +53,81 @@ export const DiagnosisScreen = () => {
     }
   }, [isAnalyzing]);
 
-  const handleAnswer = (optionIndex: number) => {
-    const option = currentQuestion.options[optionIndex];
-    
-    // Update individual scores
-    const newScores = { ...diseaseScores };
-    Object.entries(option.symptom_weights).forEach(([disease, weight]) => {
-      newScores[disease] = (newScores[disease] || 0) + weight;
-    });
-
-    setDiseaseScores(newScores);
-    setAnswers({ ...answers, [currentQuestion.id]: optionIndex });
-
-    // Wait slightly then go next
-    setTimeout(() => {
-      if (currentQuestionIndex < QUESTIONS.length - 1) {
-        setCurrentQuestionIndex(currentQuestionIndex + 1);
-      } else {
-        finalizeDiagnosis(newScores);
+  const handleOptionToggle = (idx: number) => {
+    if (currentQuestion.type === 'multiple_select') {
+      if (selectedOptions.includes(idx)) {
+        setSelectedOptions(selectedOptions.filter(i => i !== idx));
+      } else if (selectedOptions.length < 3) {
+        setSelectedOptions([...selectedOptions, idx]);
       }
-    }, 400);
-  };
-
-  const handleBack = () => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
+    } else {
+      setSelectedOptions([idx]);
+      // If it's single choice, we can auto-advance if we want, but let's stick to explicit next for consistency or auto-advance for yes_no
+      if (currentQuestion.type === 'yes_no') {
+        processAnswer([idx]);
+      }
     }
   };
 
-  const finalizeDiagnosis = async (finalScores: Record<string, number>) => {
+  const processAnswer = (indices: number[]) => {
+    const newScores = { ...diseaseScores };
+    indices.forEach(idx => {
+      const opt = currentQuestion.options[idx];
+      Object.entries(opt.symptom_weights).forEach(([disease, weight]) => {
+        newScores[disease] = (newScores[disease] || 0) + weight;
+      });
+    });
+
+    const newAnswer = {
+      question_id: currentQuestionId,
+      question_text: language === 'en' ? currentQuestion.text_en : currentQuestion.text_hi,
+      selected_option: currentQuestion.type === 'multiple_select' ? indices : indices[0],
+      weights_added: indices.map(idx => currentQuestion.options[idx].symptom_weights)
+    };
+
+    const newSessionAnswers = [...sessionAnswers, newAnswer];
+    setSessionAnswers(newSessionAnswers);
+    setDiseaseScores(newScores);
+    setSelectedOptions([]);
+
+    const nextId = getNextQuestion(currentQuestionId, newAnswer.selected_option, newScores);
+
+    if (nextId) {
+      setCurrentQuestionId(nextId);
+    } else {
+      finalizeDiagnosis(newSessionAnswers);
+    }
+  };
+
+  const handleNext = () => {
+    if (selectedOptions.length > 0) {
+      processAnswer(selectedOptions);
+    }
+  };
+
+  const handleBack = () => {
+    if (sessionAnswers.length > 0) {
+      const prevAnswer = sessionAnswers[sessionAnswers.length - 1];
+      setCurrentQuestionId(prevAnswer.question_id);
+      setSessionAnswers(sessionAnswers.slice(0, -1));
+      // Recalculate scores or keep it simple? Let's just reset scores and re-run through answers
+      const reCalcScores: Record<string, number> = {};
+      sessionAnswers.slice(0, -1).forEach(ans => {
+        const weightsList = ans.weights_added;
+        weightsList.forEach((w: any) => {
+          Object.entries(w).forEach(([d, v]) => {
+            reCalcScores[d] = (reCalcScores[d] || 0) + (v as number);
+          });
+        });
+      });
+      setDiseaseScores(reCalcScores);
+    }
+  };
+
+  const finalizeDiagnosis = async (finalAnswers: any[]) => {
     setIsAnalyzing(true);
     
-    const results = calculateDiagnosis(finalScores);
+    const results = calculateDiagnosis(finalAnswers);
     const ageGroup = getAgeGroup(currentPatient.age);
 
     setTimeout(async () => {
@@ -94,7 +140,7 @@ export const DiagnosisScreen = () => {
           timestamp: new Date().toISOString(),
           diagnosed_disease: results.diagnosis,
           confidence_score: results.confidence,
-          top_alternatives: results.topAlternatives,
+          top_alternatives: results.top3,
           ai_used: aiResult ? 1 : 0,
           ai_result: aiResult ? JSON.stringify(aiResult) : null,
           action_taken: results.action
@@ -107,24 +153,24 @@ export const DiagnosisScreen = () => {
         });
         const { id: sessionId } = await sessionRes.json();
 
-        if (diseaseMap && diseaseMap.is_dispensable) {
-          const dosage = ageGroup === 'child' ? diseaseMap.dosage_child : 
-                         ageGroup === 'adult' ? diseaseMap.dosage_adult : 
-                         diseaseMap.dosage_elderly;
+        // Always try to create a prescription entry if we have medicine info or just generic advice
+        const medicineName = diseaseMap?.medicine_name || "General Care / Consult Doctor";
+        const dosage = diseaseMap ? (ageGroup === 'child' ? diseaseMap.dosage_child : 
+                       ageGroup === 'adult' ? diseaseMap.dosage_adult : 
+                       diseaseMap.dosage_elderly) : "As recommended by physician";
 
-          await fetch('/api/prescriptions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              session_id: sessionId,
-              medicine_name: diseaseMap.medicine_name,
-              dosage: dosage,
-              frequency: "Twice a day", 
-              duration: "3 days",
-              compartment_number: diseaseMap.compartment_number
-            })
-          });
-        }
+        await fetch('/api/prescriptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            medicine_name: medicineName,
+            dosage: dosage || "Consult pharmacist",
+            frequency: diseaseMap?.is_serious ? "URGENT" : "As instructed", 
+            duration: diseaseMap?.is_serious ? "Immediate" : "5 days",
+            compartment_number: diseaseMap?.compartment_number || 0
+          })
+        });
 
         setCurrentSession({ id: sessionId, ...sessionPayload });
         navigate('/prescription');
@@ -295,7 +341,7 @@ export const DiagnosisScreen = () => {
         
         <AnimatePresence mode="sync">
           <motion.div 
-            key={currentQuestionIndex}
+            key={currentQuestionId}
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -30 }}
@@ -306,7 +352,7 @@ export const DiagnosisScreen = () => {
             <div className="flex items-start justify-between mb-8">
                <div className="flex items-center gap-3 bg-[rgba(0,188,212,0.1)] px-4 py-2 rounded-full border border-brand-secondary/30 text-brand-secondary">
                   <span className="text-xs font-bold uppercase tracking-[1.5px]">
-                    {t('diagnosis.question')} {currentQuestionIndex + 1}
+                    {t('diagnosis.question')} {sessionAnswers.length + 1}
                   </span>
                </div>
             </div>
@@ -353,15 +399,15 @@ export const DiagnosisScreen = () => {
                </motion.div>
             )}
 
-            <div className="grid grid-cols-1 gap-4 mt-auto">
+             <div className="grid grid-cols-1 gap-4 mt-auto">
                {currentQuestion.options.map((option, idx) => {
-                 const isSelected = answers[currentQuestion.id] === idx;
+                 const isSelected = selectedOptions.includes(idx);
                  
                  return (
                    <motion.button
                       whileTap={{ scale: 0.98 }}
                       key={idx}
-                      onClick={() => handleAnswer(idx)}
+                      onClick={() => handleOptionToggle(idx)}
                       className={`min-h-[80px] rounded-xl text-left px-8 text-xl font-bold transition-all flex items-center justify-between border-l-4 ${
                         isSelected 
                           ? 'bg-brand-primary text-text-primary border-brand-secondary shadow-[0_8px_24px_rgba(33,150,243,0.4)]' 
@@ -370,7 +416,9 @@ export const DiagnosisScreen = () => {
                    >
                       {language === 'en' ? option.text_en : option.text_hi}
                       {isSelected && (
-                         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-4 h-4 bg-white rounded-full" />
+                         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex items-center justify-center w-6 h-6 bg-white rounded-full text-brand-primary">
+                           <Check size={16} strokeWidth={4} />
+                         </motion.div>
                       )}
                    </motion.button>
                  );
@@ -381,14 +429,29 @@ export const DiagnosisScreen = () => {
                <motion.button 
                  whileTap={{ scale: 0.96 }}
                  onClick={handleBack}
-                 disabled={currentQuestionIndex === 0}
+                 disabled={sessionAnswers.length === 0}
                  className={`flex items-center gap-3 text-sm font-bold uppercase tracking-widest transition-colors ${
-                   currentQuestionIndex === 0 ? 'text-white/10' : 'text-text-muted hover:text-text-primary'
+                   sessionAnswers.length === 0 ? 'text-white/10' : 'text-text-muted hover:text-text-primary'
                  }`}
                >
                  <ArrowLeft size={20} />
-                 Back
+                 {t('common.back') || 'Back'}
                </motion.button>
+
+               {(currentQuestion.type === 'multiple_select' || currentQuestion.type === 'multiple_choice') && (
+                 <motion.button 
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleNext}
+                  disabled={selectedOptions.length === 0}
+                  className={`h-14 px-10 bg-brand-secondary text-brand-navy rounded-full font-black text-sm uppercase tracking-widest shadow-[0_4px_15px_rgba(0,188,212,0.3)] transition-all flex items-center gap-2 ${
+                    selectedOptions.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {t('common.next') || 'Next'}
+                  <ArrowRight size={20} />
+                </motion.button>
+               )}
             </div>
           </motion.div>
         </AnimatePresence>

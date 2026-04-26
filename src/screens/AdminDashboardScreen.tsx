@@ -278,6 +278,10 @@ const InventoryTab = ({ inventory, refreshInventory }: any) => {
     });
 
     setEditingId(null);
+    setFormData((prev: any) => {
+      const { [n]: _, ...rest } = prev;
+      return rest;
+    });
     refreshInventory();
     setLoading(false);
   };

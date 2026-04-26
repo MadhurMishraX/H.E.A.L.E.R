@@ -11,13 +11,16 @@ import {
   LogOut, 
   Package, 
   Calendar,
+  Clock,
+  Check,
   Activity,
   Thermometer,
   Heart,
   Droplets,
   Stethoscope,
   ArrowDown,
-  Lock
+  Lock,
+  Info
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { sendPrescriptionEmail, sendAutoReferralEmail } from '../services/emailService';
@@ -285,67 +288,117 @@ export const PrescriptionScreen = () => {
             )}
 
             <div className="flex-1 overflow-y-auto flex flex-col gap-4 pr-2">
-              {prescriptions.map((p, i) => {
+              {prescriptions.length > 0 ? prescriptions.map((p, i) => {
                 const invItem = inventory.find(inv => inv.compartment_number === p.compartment_number);
                 const outOfStock = invItem ? invItem.current_count <= 0 : true;
                 const isDispensable = p.compartment_number > 0 && diseaseMap?.is_dispensable === 1;
+                const isSerious = diseaseMap?.is_serious === 1 || currentSession?.action_taken === 'serious_referred';
+                const dispensed = p.is_dispensed === 1 || dispensedItems[p.medicine_name];
 
                 return (
                   <motion.div 
-                    initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 + (i * 0.1) }}
-                    key={i} 
-                    className="p-6 rounded-2xl glass-card flex justify-between items-center border-[rgba(255,255,255,0.05)] hover:border-[rgba(33,150,243,0.3)] transition-colors"
+                    key={p.id || i}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.1 }}
+                    className={`p-6 glass-card border-l-4 transition-all ${
+                      dispensed ? 'border-l-brand-success opacity-80' : 
+                      isSerious ? 'border-l-brand-danger' : 
+                      'border-l-brand-secondary'
+                    }`}
                   >
-                    <div className="flex items-center gap-5">
-                      <div className="w-16 h-16 bg-[rgba(33,150,243,0.1)] rounded-full flex items-center justify-center text-brand-primary border border-brand-primary/20">
-                        <Package size={28} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-3 mb-1">
-                          <h5 className="text-[22px] font-bold text-white m-0 leading-none">{p.medicine_name}</h5>
-                          {isDispensable && (
-                            <span className="px-2.5 py-0.5 bg-[rgba(0,188,212,0.15)] text-brand-secondary text-[10px] font-bold rounded-full uppercase tracking-widest border border-brand-secondary/30">
-                              CPMT {p.compartment_number}
-                            </span>
-                          )}
+                    <div className="flex justify-between items-start">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg ${dispensed ? 'bg-brand-success/20 text-brand-success' : 'bg-brand-secondary/20 text-brand-secondary'}`}>
+                            <Droplets size={20} />
+                          </div>
+                          <div>
+                            <h4 className="text-xl font-black text-white uppercase tracking-wide">{p.medicine_name}</h4>
+                            <p className="text-text-muted text-xs font-bold uppercase tracking-widest">{p.dosage}</p>
+                          </div>
                         </div>
-                        <p className="text-sm font-medium text-text-secondary m-0 tracking-wide mt-2">
-                          {p.dosage} • {p.frequency} • {p.duration}
-                        </p>
+                        
+                        <div className="flex items-center gap-4 mt-2">
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold text-text-secondary uppercase tracking-widest bg-white/5 px-2 py-1 rounded">
+                            <Clock size={12} />
+                            {p.frequency}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold text-text-secondary uppercase tracking-widest bg-white/5 px-2 py-1 rounded">
+                            <Calendar size={12} />
+                            {p.duration}
+                          </div>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center">
-                      {dispensedItems[p.medicine_name] ? (
-                        <div className="flex items-center gap-2 text-brand-success font-bold text-sm bg-[rgba(0,230,118,0.1)] px-5 py-3 rounded-full border border-brand-success/30 shadow-[0_0_15px_rgba(0,230,118,0.2)]">
-                          <CheckCircle2 size={18} />
-                          {t('prescription.dispensed')}
-                        </div>
-                      ) : isSerious ? (
-                        <span className="text-brand-danger font-bold text-sm uppercase tracking-widest">{t('prescription.doctorReview')}</span>
-                      ) : !isDispensable ? (
-                        <span className="text-text-muted font-bold text-xs uppercase tracking-widest max-w-[140px] text-right">
-                          {t('prescription.availableAtPharmacy')}
-                        </span>
-                      ) : outOfStock ? (
-                        <button disabled className="h-12 px-6 bg-white/5 border border-white/10 text-text-muted rounded-full font-bold text-sm flex items-center gap-2 cursor-not-allowed">
-                          <Lock size={16} />
-                          {t('prescription.outOfStock')}
-                        </button>
-                      ) : (
-                        <motion.button 
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => handleDispense(p)}
-                          className="h-12 px-8 bg-brand-primary hover:bg-[#1E88E5] text-white rounded-full font-bold text-sm shadow-[0_0_20px_rgba(33,150,243,0.5)] flex items-center gap-2 transition-colors"
-                        >
-                          <ArrowDown size={18} />
-                          {t('prescription.dispense')}
-                        </motion.button>
-                      )}
+                      <div className="flex flex-col items-end gap-3">
+                        {dispensed ? (
+                          <div className="flex items-center gap-2 px-4 py-2 bg-brand-success/10 border border-brand-success/30 text-brand-success rounded-full text-xs font-black uppercase tracking-widest">
+                            <CheckCircle2 size={14} strokeWidth={3} />
+                            {t('prescription.dispensed')}
+                          </div>
+                        ) : isSerious ? (
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-brand-danger font-bold text-xs uppercase tracking-widest">{t('prescription.doctorReview')}</span>
+                            <button disabled className="h-10 px-4 bg-white/5 border border-white/10 text-white/20 rounded-full font-bold text-[10px] uppercase tracking-widest cursor-not-allowed">
+                              {t('prescription.dispense')}
+                            </button>
+                          </div>
+                        ) : !isDispensable ? (
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-text-muted font-bold text-[10px] uppercase tracking-widest mb-1">{t('prescription.availableAtPharmacy')}</span>
+                            <button disabled className="h-10 px-6 bg-white/5 border border-white/10 text-white/20 rounded-full font-bold text-[10px] uppercase tracking-widest cursor-not-allowed flex items-center gap-2">
+                              <Lock size={12} />
+                              {t('prescription.dispense')}
+                            </button>
+                          </div>
+                        ) : outOfStock ? (
+                          <button disabled className="h-12 px-6 bg-white/5 border border-white/10 text-text-muted rounded-full font-bold text-sm flex items-center gap-2 cursor-not-allowed">
+                            <Lock size={16} />
+                            {t('prescription.outOfStock')}
+                          </button>
+                        ) : (
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleDispense(p)}
+                            className="h-12 px-8 bg-brand-secondary text-brand-navy rounded-full font-black text-sm uppercase tracking-widest shadow-[0_4px_12px_rgba(0,188,212,0.3)] hover:shadow-[0_6px_20px_rgba(0,188,212,0.4)] transition-all flex items-center gap-2"
+                          >
+                            <ArrowDown size={18} />
+                            {t('prescription.dispense')}
+                          </motion.button>
+                        )}
+                      </div>
                     </div>
                   </motion.div>
                 );
-              })}
+              }) : (
+                <motion.div 
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                  className="flex flex-col items-center justify-center p-12 text-center glass-card border-dashed border-2 border-white/10"
+                >
+                  <AlertCircle size={48} className="text-text-muted mb-4" />
+                  <p className="text-text-secondary font-medium leading-relaxed">
+                    {t('prescription.noMedicines')}
+                  </p>
+                </motion.div>
+              )}
+
+              {/* Advice Section */}
+              {diseaseMap?.advice && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                  className="mt-4 p-6 glass-card border-l-4 border-l-brand-secondary bg-brand-secondary/5"
+                >
+                  <div className="flex items-center gap-3 mb-3 text-brand-secondary">
+                    <Info size={20} />
+                    <h5 className="font-bold uppercase tracking-wider text-sm">{t('prescription.advice')}</h5>
+                  </div>
+                  <p className="text-text-primary text-lg font-medium leading-relaxed italic">
+                    "{diseaseMap.advice}"
+                  </p>
+                </motion.div>
+              )}
             </div>
           </div>
 

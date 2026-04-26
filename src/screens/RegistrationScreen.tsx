@@ -17,6 +17,8 @@ export const RegistrationScreen = () => {
     age: '',
     gender: '',
     email: '',
+    password: '',
+    confirmPassword: '',
     language_preference: language
   });
 
@@ -53,6 +55,16 @@ export const RegistrationScreen = () => {
       newErrors.email = t('registration.emailError');
     }
 
+    if (!formData.password) {
+      newErrors.password = t('registration.fieldRequired');
+    } else if (formData.password.length < 4) {
+      newErrors.password = t('registration.passwordError');
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = t('registration.passwordMismatch');
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -61,10 +73,11 @@ export const RegistrationScreen = () => {
     if (!validate()) return;
 
     try {
+      const { confirmPassword, ...submitData } = formData;
       const response = await fetch('/api/patients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(submitData)
       });
 
       if (response.ok) {
@@ -202,6 +215,40 @@ export const RegistrationScreen = () => {
                   }`}
                 />
                 {errors.email && <span className="absolute -bottom-6 left-2 text-brand-danger text-sm font-bold">{errors.email}</span>}
+              </div>
+
+              {/* Password */}
+              <div className="flex flex-col gap-3 group relative">
+                <label className="text-sm font-bold text-text-secondary flex items-center gap-2 uppercase tracking-widest transition-colors group-focus-within:text-brand-secondary">
+                  <User size={18} />
+                  {t('registration.password')}
+                </label>
+                <input 
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  className={`h-16 px-6 text-xl bg-brand-navy rounded-xl border border-white/10 text-white placeholder-text-muted transition-all focus:outline-none focus:border-brand-secondary focus:shadow-[0_0_15px_rgba(0,188,212,0.2)] ${
+                    errors.password ? 'border-brand-danger shadow-[0_0_15px_rgba(255,82,82,0.2)]' : ''
+                  }`}
+                />
+                {errors.password && <span className="absolute -bottom-6 left-2 text-brand-danger text-sm font-bold">{errors.password}</span>}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="flex flex-col gap-3 group relative">
+                <label className="text-sm font-bold text-text-secondary flex items-center gap-2 uppercase tracking-widest transition-colors group-focus-within:text-brand-secondary">
+                  <Check size={18} />
+                  {t('registration.confirmPassword')}
+                </label>
+                <input 
+                  type="password"
+                  value={formData.confirmPassword}
+                  onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                  className={`h-16 px-6 text-xl bg-brand-navy rounded-xl border border-white/10 text-white placeholder-text-muted transition-all focus:outline-none focus:border-brand-secondary focus:shadow-[0_0_15px_rgba(0,188,212,0.2)] ${
+                    errors.confirmPassword ? 'border-brand-danger shadow-[0_0_15px_rgba(255,82,82,0.2)]' : ''
+                  }`}
+                />
+                {errors.confirmPassword && <span className="absolute -bottom-6 left-2 text-brand-danger text-sm font-bold">{errors.confirmPassword}</span>}
               </div>
 
               {/* Language */}

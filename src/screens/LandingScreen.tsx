@@ -18,32 +18,28 @@ export const LandingScreen = () => {
   const { t, language, setLanguage, setCurrentPatient, isHardwareConnected } = useAppContext();
   const navigate = useNavigate();
   const [showScanner, setShowScanner] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [errorMessage, setErrorMessage] = useState('');
   const [showStatusModal, setShowStatusModal] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   useEffect(() => {
     let scanner: Html5QrcodeScanner | null = null;
-
     if (showScanner) {
       scanner = new Html5QrcodeScanner(
         "qr-reader",
         { fps: 10, qrbox: { width: 400, height: 400 } },
         /* verbose= */ false
       );
-
       scanner.render((decodedText) => {
         handleScan(decodedText);
         scanner?.clear();
         setShowScanner(false);
-      }, (error) => {
-        // console.warn(error);
-      });
+      }, (error) => {});
     }
-
     return () => {
-      if (scanner) {
-        scanner.clear().catch(err => console.error("Failed to clear scanner", err));
-      }
+      if (scanner) scanner.clear().catch(err => console.error("Failed to clear scanner", err));
     };
   }, [showScanner]);
 
@@ -59,8 +55,35 @@ export const LandingScreen = () => {
         setTimeout(() => setErrorMessage(''), 5000);
       }
     } catch (err) {
-      console.error("Error fetching patient", err);
       setErrorMessage("Error connecting to server.");
+    }
+  };
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoggingIn(true);
+    setErrorMessage('');
+    try {
+      const response = await fetch('/api/patients/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm)
+      });
+      if (response.ok) {
+        const patient = await response.json();
+        const fullRes = await fetch(`/api/admin/patients/${patient.id}/full`);
+        if (fullRes.ok) {
+          const fullPatient = await fullRes.json();
+          setCurrentPatient(fullPatient);
+          navigate('/dashboard');
+        }
+      } else {
+        setErrorMessage(t('landing.errorLoginFailed'));
+      }
+    } catch (err) {
+      setErrorMessage("Connection error.");
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -167,7 +190,7 @@ export const LandingScreen = () => {
           {/* Button 2: Returning Patient */}
           <motion.button
             whileTap={{ scale: 0.96 }}
-            onClick={() => setShowScanner(true)}
+            onClick={() => setShowLoginModal(true)}
             className="w-full glass-card border-l-4 border-l-brand-primary p-6 flex items-center justify-between group hover:bg-[rgba(33,150,243,0.05)] transition-colors"
           >
             <div className="flex items-center gap-6">
@@ -195,6 +218,86 @@ export const LandingScreen = () => {
           </motion.button>
         </div>
       </div>
+
+      {/* LOGIN MODAL */}
+      <AnimatePresence>
+        {showLoginModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-brand-navy/95 backdrop-blur-xl z-[100] flex items-center justify-center p-12"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="glass-card w-full max-w-xl p-12 relative"
+            >
+              <button 
+                onClick={() => setShowLoginModal(false)}
+                className="absolute top-6 right-6 w-12 h-12 bg-white/10 rounded-full flex items-center justify-center hover:bg-brand-danger/20 hover:text-brand-danger transition-colors z-10"
+              >
+                <X size={24} />
+              </button>
+
+              <h2 className="text-3xl font-black text-white mb-8">{t('landing.returningPatient')}</h2>
+
+              {errorMessage && (
+                <div className="bg-brand-danger/10 border border-brand-danger text-brand-danger p-4 rounded-xl text-sm font-bold mb-6">
+                  {errorMessage}
+                </div>
+              )}
+
+              <form onSubmit={handleEmailLogin} className="flex flex-col gap-6">
+                <div className="flex flex-col gap-3">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-widest">{t('landing.loginEmail')}</label>
+                  <input 
+                    type="email"
+                    required
+                    value={loginForm.email}
+                    onChange={(e) => setLoginForm({...loginForm, email: e.target.value})}
+                    className="h-14 px-6 bg-brand-navy rounded-xl border border-white/10 text-white focus:outline-none focus:border-brand-primary transition-all"
+                  />
+                </div>
+                <div className="flex flex-col gap-3 text-left">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-widest">{t('landing.loginPassword')}</label>
+                  <input 
+                    type="password"
+                    required
+                    value={loginForm.password}
+                    onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
+                    className="h-14 px-6 bg-brand-navy rounded-xl border border-white/10 text-white focus:outline-none focus:border-brand-primary transition-all"
+                  />
+                </div>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="w-full h-16 bg-brand-primary text-white rounded-xl text-xl font-black shadow-[0_8px_24px_rgba(33,150,243,0.3)] mt-2 flex items-center justify-center gap-3"
+                >
+                  {isLoggingIn ? "Logging in..." : t('landing.loginBtn')}
+                  {!isLoggingIn && <ChevronRight size={20} />}
+                </motion.button>
+              </form>
+
+              <div className="mt-8 pt-8 border-t border-white/10 text-center">
+                <button 
+                  onClick={() => {
+                    setShowLoginModal(false);
+                    setShowScanner(true);
+                  }}
+                  className="text-brand-secondary font-bold flex items-center gap-2 mx-auto hover:underline"
+                >
+                  <QrCode size={20} />
+                  {t('landing.loginScan')}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* QR Scanner Modal */}
       <AnimatePresence>

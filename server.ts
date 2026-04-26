@@ -253,19 +253,36 @@ async function startServer() {
 
     app.post("/api/patients", async (req, res) => {
       try {
-        const { name, age, gender, email, language_preference } = req.body;
+        const { name, age, gender, email, password, language_preference } = req.body;
         const db = getDB();
         const created_at = new Date().toISOString();
         const result = await db.run(
-          'INSERT INTO patients (name, age, gender, email, language_preference, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-          [name, age, gender, email, language_preference, created_at]
+          'INSERT INTO patients (name, age, gender, email, password, language_preference, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [name, age, gender, email, password, language_preference, created_at]
         );
         const newId = result.lastID;
-        const patient = await db.get('SELECT * FROM patients WHERE id = ?', [newId]);
+        const patient = await db.get('SELECT id, name, age, gender, email, language_preference, created_at FROM patients WHERE id = ?', [newId]);
         res.status(201).json(patient);
       } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Failed to create patient" });
+      }
+    });
+
+    app.post("/api/patients/login", async (req, res) => {
+      try {
+        const { email, password } = req.body;
+        const db = getDB();
+        const patient = await db.get('SELECT * FROM patients WHERE email = ? AND password = ?', [email, password]);
+        if (patient) {
+          // Remove password from response for security
+          const { password, ...patientData } = patient;
+          res.json(patientData);
+        } else {
+          res.status(401).json({ error: "Invalid email or password" });
+        }
+      } catch (err) {
+        res.status(500).json({ error: "Login failed" });
       }
     });
 

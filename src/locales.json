@@ -12,7 +12,12 @@
       "returningPatient": "Returning Patient",
       "adminAccess": "Admin Access",
       "admin": "Admin",
+      "loginEmail": "Email Address",
+      "loginPassword": "Password",
+      "loginBtn": "Login Now",
+      "loginScan": "Or scan QR card",
       "errorPatientNotFound": "Patient not found. Please register.",
+      "errorLoginFailed": "Invalid email or password.",
       "robotIllustration": "Robot Doctor Illustration"
     },
     "registration": {
@@ -22,6 +27,8 @@
       "age": "Age",
       "gender": "Gender",
       "email": "Email Address",
+      "password": "Password",
+      "confirmPassword": "Confirm Password",
       "language": "Language Preference",
       "male": "Male",
       "female": "Female",
@@ -30,6 +37,8 @@
       "validationError": "Please check your inputs",
       "ageError": "Age must be between 1 and 120",
       "emailError": "Invalid email format",
+      "passwordError": "Password must be at least 4 characters",
+      "passwordMismatch": "Passwords do not match",
       "fieldRequired": "This field is required",
       "qrTitle": "Your Patient QR Code",
       "qrSubtitle": "Save this for future visits. We are also sending it to your email.",
@@ -83,7 +92,9 @@
       "yes": "Yes",
       "no": "No",
       "used": "Used",
-      "notUsed": "Not Used"
+      "notUsed": "Not Used",
+      "noMedicines": "No specific medications prescribed at this time. Please follow the instructions below or consult a healthcare professional.",
+      "advice": "General Instructions & Advice"
     },
     "dispensing": {
       "title": "Dispensing Medication",
@@ -143,7 +154,12 @@
       "returningPatient": "पुराना मरीज़",
       "adminAccess": "व्यवस्थापक पहुँच",
       "admin": "व्यवस्थापक",
+      "loginEmail": "ईमेल पता",
+      "loginPassword": "पासवर्ड",
+      "loginBtn": "अभी लॉगिन करें",
+      "loginScan": "या QR कार्ड स्कैन करें",
       "errorPatientNotFound": "मरीज़ नहीं मिला। कृपया पंजीकरण करें।",
+      "errorLoginFailed": "अमान्य ईमेल या पासवर्ड।",
       "robotIllustration": "रोबोट डॉक्टर चित्रण"
     },
     "registration": {
@@ -153,6 +169,8 @@
       "age": "उम्र",
       "gender": "लिंग",
       "email": "ईमेल पता",
+      "password": "पासवर्ड",
+      "confirmPassword": "पासवर्ड की पुष्टि करें",
       "language": "भाषा की प्राथमिकता",
       "male": "पुरुष",
       "female": "महिला",
@@ -161,6 +179,8 @@
       "validationError": "कृपया अपने इनपुट की जाँच करें",
       "ageError": "उम्र 1 और 120 के बीच होनी चाहिए",
       "emailError": "अवैध ईमेल प्रारूप",
+      "passwordError": "पासवर्ड कम से कम 4 अक्षरों का होना चाहिए",
+      "passwordMismatch": "पासवर्ड मेल नहीं खाते",
       "fieldRequired": "यह फ़ील्ड आवश्यक है",
       "qrTitle": "आपका मरीज़ QR कोड",
       "qrSubtitle": "भविष्य की मुलाकातों के लिए इसे सहेजें। हम इसे आपके ईमेल पर भी भेज रहे हैं।",
@@ -214,7 +234,9 @@
       "yes": "हाँ",
       "no": "नहीं",
       "used": "उपयोग किया गया",
-      "notUsed": "उपयोग नहीं किया गया"
+      "notUsed": "उपयोग नहीं किया गया",
+      "noMedicines": "इस समय कोई विशेष दवा निर्धारित नहीं की गई है। कृपया नीचे दिए गए निर्देशों का पालन करें या किसी स्वास्थ्य पेशेवर से परामर्श लें।",
+      "advice": "सामान्य निर्देश और सलाह"
     },
     "dispensing": {
       "title": "दवा दी जा रही है",
