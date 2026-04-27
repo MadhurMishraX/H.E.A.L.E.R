@@ -23,7 +23,8 @@ export const DispensingScreen = () => {
     compartment_number, 
     medicine_name, 
     quantity_dispensed, 
-    session_id 
+    session_id,
+    isFirstAid
   } = params;
 
   const [timeLeft, setTimeLeft] = useState(10);
@@ -35,8 +36,8 @@ export const DispensingScreen = () => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (!params.compartment_number) {
-      navigate('/prescription');
+    if (!params.compartment_number && !params.isFirstAid) {
+      navigate('/landing');
       return;
     }
 
@@ -57,7 +58,11 @@ export const DispensingScreen = () => {
       });
 
       // 3. Send Commands
-      await sendCommand(`OPEN_${compartment_number}`);
+      if (isFirstAid) {
+        await sendCommand(`OPEN_FA`);
+      } else {
+        await sendCommand(`OPEN_${compartment_number}`);
+      }
       await sendCommand(`CAM_ON`);
 
       // 4. Start Timer
@@ -85,8 +90,23 @@ export const DispensingScreen = () => {
     setIsProcessing(true);
     
     // 5. Send Stop Commands
-    await sendCommand(`CLOSE_${compartment_number}`);
+    if (isFirstAid) {
+      await sendCommand(`CLOSE_FA`);
+    } else {
+      await sendCommand(`CLOSE_${compartment_number}`);
+    }
     await sendCommand(`CAM_OFF`);
+
+    if (isFirstAid) {
+      fetch('/api/logs/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: "Instant First Aid Dispensed" })
+      });
+      setIsCompleted(true);
+      setIsProcessing(false);
+      return;
+    }
 
     try {
       // 6. DB Updates & Logging
@@ -115,6 +135,21 @@ export const DispensingScreen = () => {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleCancel = async () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setIsProcessing(true);
+    
+    if (isFirstAid) {
+      await sendCommand(`CLOSE_FA`);
+    } else {
+      await sendCommand(`CLOSE_${compartment_number}`);
+    }
+    await sendCommand(`CAM_OFF`);
+
+    setIsProcessing(false);
+    navigate(isFirstAid ? '/' : '/prescription');
   };
 
   const addTime = () => {
@@ -157,10 +192,10 @@ export const DispensingScreen = () => {
               className="flex flex-col items-center text-center w-full"
             >
               <h2 className="text-4xl font-bold text-text-primary mb-2 tracking-wide">
-                {t('dispensing.dispensing').replace('{{medicine}}', medicine_name)}
+                {isFirstAid ? t('dispensing.firstAidKit') : t('dispensing.dispensing').replace('{{medicine}}', medicine_name)}
               </h2>
               <p className="text-xl text-brand-secondary/80 font-bold mb-16 uppercase tracking-[0.2em]">
-                {t('dispensing.subtitle').replace('{{n}}', compartment_number)}
+                {isFirstAid ? t('dispensing.emergencyAccess') : t('dispensing.subtitle').replace('{{n}}', compartment_number)}
               </p>
 
               {/* Timer Circle */}
@@ -178,7 +213,7 @@ export const DispensingScreen = () => {
                   <motion.circle 
                     cx="160" cy="160" r="140" fill="none" stroke="url(#timerGrad)" strokeWidth="12" strokeLinecap="round"
                     strokeDasharray={880}
-                    animate={{ strokeDashoffset: 880 - (timeLeft / Math.max(10, timeLeft)) * 880 }}
+                    animate={{ strokeDashoffset: 880 - (timeLeft / 20) * 880 }}
                     transition={{ ease: "linear", duration: 1 }}
                     className="drop-shadow-[0_0_15px_rgba(33,150,243,0.5)]"
                   />
@@ -194,20 +229,34 @@ export const DispensingScreen = () => {
               </div>
 
               <p className="text-xl text-text-secondary font-medium mb-12 max-w-lg">
-                {t('dispensing.collectInstructions')
+                {isFirstAid 
+                  ? t('dispensing.collectFirstAid')
+                  : t('dispensing.collectInstructions')
                   .replace('{{q}}', quantity_dispensed)
                   .replace('{{m}}', medicine_name)}
               </p>
 
-              <motion.button 
-                whileTap={{ scale: 0.95 }}
-                onClick={addTime}
-                disabled={isProcessing}
-                className="h-16 px-8 rounded-full flex items-center gap-4 transition-all border-2 border-brand-secondary text-brand-secondary hover:bg-[rgba(0,188,212,0.1)] hover:shadow-[0_0_20px_rgba(0,188,212,0.3)] disabled:opacity-50"
-              >
-                <Plus size={24} />
-                <span className="text-sm font-bold uppercase tracking-widest">+10 Seconds</span>
-              </motion.button>
+              <div className="flex gap-6 items-center">
+                <motion.button 
+                  whileTap={{ scale: 0.95 }}
+                  onClick={addTime}
+                  disabled={isProcessing}
+                  className="h-16 px-8 rounded-full flex items-center gap-4 transition-all border-2 border-brand-secondary text-brand-secondary hover:bg-[rgba(0,188,212,0.1)] hover:shadow-[0_0_20px_rgba(0,188,212,0.3)] disabled:opacity-50"
+                >
+                  <Plus size={24} />
+                  <span className="text-sm font-bold uppercase tracking-widest">+10 Seconds</span>
+                </motion.button>
+
+                <motion.button 
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleCancel}
+                  disabled={isProcessing}
+                  className="h-16 px-8 rounded-full flex items-center gap-4 transition-all border-2 border-brand-danger text-brand-danger hover:bg-[rgba(255,82,82,0.1)] hover:shadow-[0_0_20px_rgba(255,82,82,0.3)] disabled:opacity-50"
+                >
+                  <ArrowLeft size={24} />
+                  <span className="text-sm font-bold uppercase tracking-widest">{t('dispensing.cancel')}</span>
+                </motion.button>
+              </div>
               
               {isProcessing && (
                 <div className="mt-8 flex items-center gap-3 text-brand-primary font-bold text-sm tracking-widest uppercase glow">
@@ -229,10 +278,10 @@ export const DispensingScreen = () => {
               <h2 className="text-3xl font-bold text-text-primary mb-12">{dbError}</h2>
               <motion.button 
                 whileTap={{ scale: 0.96 }}
-                onClick={() => navigate('/prescription')}
+                onClick={() => navigate(isFirstAid ? '/' : '/prescription')}
                 className="h-16 px-10 bg-brand-primary text-white rounded-full text-sm font-bold tracking-widest uppercase shadow-[0_0_20px_rgba(33,150,243,0.4)]"
               >
-                {t('dispensing.backToPrescription')}
+                {isFirstAid ? t('landing.home') : t('dispensing.backToPrescription')}
               </motion.button>
             </motion.div>
           ) : (
@@ -264,11 +313,11 @@ export const DispensingScreen = () => {
               
               <motion.button 
                 whileTap={{ scale: 0.96 }}
-                onClick={() => navigate('/prescription')}
+                onClick={() => navigate(isFirstAid ? '/' : '/prescription')}
                 className="h-16 px-10 bg-brand-primary hover:bg-[#1E88E5] text-white rounded-full text-sm font-bold tracking-widest uppercase shadow-[0_0_20px_rgba(33,150,243,0.5)] flex items-center gap-3 transition-colors"
               >
                 <ArrowLeft size={20} strokeWidth={3} />
-                {t('dispensing.backToPrescription')}
+                {isFirstAid ? t('landing.home') : t('dispensing.backToPrescription')}
               </motion.button>
             </motion.div>
           )}

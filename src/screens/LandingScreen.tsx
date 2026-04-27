@@ -24,6 +24,10 @@ export const LandingScreen = () => {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
+  const handleFirstAid = () => {
+    navigate('/dispensing', { state: { isFirstAid: true } });
+  };
+
   useEffect(() => {
     let scanner: Html5QrcodeScanner | null = null;
     if (showScanner) {
@@ -202,7 +206,22 @@ export const LandingScreen = () => {
             <ChevronRight className="text-text-muted group-hover:text-brand-primary transition-colors" />
           </motion.button>
 
-          {/* Button 3: Admin Access */}
+          {/* Button 3: First Aid */}
+          <motion.button
+            whileTap={{ scale: 0.96 }}
+            onClick={handleFirstAid}
+            className="w-full glass-card border-l-4 border-l-brand-danger p-6 flex items-center justify-between group hover:bg-[rgba(255,82,82,0.05)] transition-colors"
+          >
+            <div className="flex items-center gap-6">
+              <div className="w-14 h-14 rounded-full bg-[rgba(255,82,82,0.1)] flex items-center justify-center text-brand-danger group-hover:scale-110 transition-transform">
+                <Activity size={28} />
+              </div>
+              <span className="text-2xl font-bold text-brand-danger uppercase tracking-wider">{t('landing.dispenseFirstAid')}</span>
+            </div>
+            <ChevronRight className="text-text-muted group-hover:text-brand-danger transition-colors" />
+          </motion.button>
+
+          {/* Button 4: Admin Access */}
           <motion.button
             whileTap={{ scale: 0.96 }}
             onClick={() => navigate('/admin')}

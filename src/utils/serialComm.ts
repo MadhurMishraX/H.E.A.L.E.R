@@ -32,7 +32,11 @@ export async function sendCommand(command: string) {
   
   // Real implementation would use writer.write()
   // Simulate responses for testing
-  if (command.includes("OPEN")) {
+  if (command.includes("OPEN_FA")) {
+    setTimeout(() => simulateInbound(`ACK_OPEN_FA`), 500);
+  } else if (command.includes("CLOSE_FA")) {
+    setTimeout(() => simulateInbound(`ACK_CLOSE_FA`), 500);
+  } else if (command.includes("OPEN")) {
     const num = command.split('_')[1]?.trim();
     setTimeout(() => simulateInbound(`ACK_OPEN_${num}`), 500);
   } else if (command.includes("CLOSE")) {

@@ -18,7 +18,9 @@
       "loginScan": "Or scan QR card",
       "errorPatientNotFound": "Patient not found. Please register.",
       "errorLoginFailed": "Invalid email or password.",
-      "robotIllustration": "Robot Doctor Illustration"
+      "robotIllustration": "Robot Doctor Illustration",
+      "dispenseFirstAid": "Dispense First Aid",
+      "home": "Home"
     },
     "registration": {
       "title": "New Patient Registration",
@@ -107,7 +109,11 @@
       "closed": "Compartment is now closed.",
       "backToPrescription": "Back to Prescription",
       "hardwareError": "Hardware not connected. Please contact the administrator.",
-      "stockError": "Medicine unavailable or out of stock!"
+      "stockError": "Medicine unavailable or out of stock!",
+      "firstAidKit": "Dispensing First Aid Kit",
+      "emergencyAccess": "Emergency Access",
+      "collectFirstAid": "Please collect the first aid items from the emergency compartment immediately.",
+      "cancel": "Stop & Close"
     },
     "adminLogin": {
       "title": "Administrator Access",
@@ -160,7 +166,9 @@
       "loginScan": "या QR कार्ड स्कैन करें",
       "errorPatientNotFound": "मरीज़ नहीं मिला। कृपया पंजीकरण करें।",
       "errorLoginFailed": "अमान्य ईमेल या पासवर्ड।",
-      "robotIllustration": "रोबोट डॉक्टर चित्रण"
+      "robotIllustration": "रोबोट डॉक्टर चित्रण",
+      "dispenseFirstAid": "प्राथमिक चिकित्सा (First Aid) निकालें",
+      "home": "होम"
     },
     "registration": {
       "title": "नया मरीज़ पंजीकरण",
@@ -249,7 +257,11 @@
       "closed": "कम्पार्टमेंट अब बंद है।",
       "backToPrescription": "पर्चे पर वापस जाएं",
       "hardwareError": "हार्डवेयर कनेक्ट नहीं है। कृपया व्यवस्थापक से संपर्क करें।",
-      "stockError": "दवा अनुपलब्ध है या स्टॉक खत्म हो गया है!"
+      "stockError": "दवा अनुपलब्ध है या स्टॉक खत्म हो गया है!",
+      "firstAidKit": "प्राथमिक चिकित्सा किट दी जा रही है",
+      "emergencyAccess": "आपातकालीन पहुँच",
+      "collectFirstAid": "कृपया आपातकालीन कम्पार्टमेंट से तुरंत प्राथमिक चिकित्सा की वस्तुएं लें।",
+      "cancel": "रुकें और बंद करें"
     },
     "adminLogin": {
       "title": "प्रशासक पहुंच",

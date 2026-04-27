@@ -18,14 +18,14 @@ const int SERVO_CLOSE_ANGLE = 0;
 const int BAUD_RATE = 9600;
 
 // --- Pin Assignments ---
-const int SERVO_PINS[] = {6, 7, 8, 9}; // CP 1, 2, 3, 4
+const int SERVO_PINS[] = {6, 7, 8, 9, 10}; // CP 1, 2, 3, 4, FA (First Aid)
 const int CAM_TRIGGER_PIN = 22;
 const int RFID_RST_PIN = 5;
 const int RFID_SS_PIN = 53; // Mega SS pin
 const int LED_PIN = 13;
 
 // --- Global Objects ---
-Servo servos[4];
+Servo servos[5];
 MFRC522 mfrc522(RFID_SS_PIN, RFID_RST_PIN);
 
 // String buffer for serial commands
@@ -37,7 +37,7 @@ void setup() {
   inputString.reserve(50);
 
   // 2. Initialize Servos
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     servos[i].attach(SERVO_PINS[i]);
     servos[i].write(SERVO_CLOSE_ANGLE);
   }
@@ -92,11 +92,13 @@ void processCommand(String cmd) {
   else if (cmd == "OPEN_2") { openServo(1); }
   else if (cmd == "OPEN_3") { openServo(2); }
   else if (cmd == "OPEN_4") { openServo(3); }
+  else if (cmd == "OPEN_FA") { openFAServo(); }
   
   else if (cmd == "CLOSE_1") { closeServo(0); }
   else if (cmd == "CLOSE_2") { closeServo(1); }
   else if (cmd == "CLOSE_3") { closeServo(2); }
   else if (cmd == "CLOSE_4") { closeServo(3); }
+  else if (cmd == "CLOSE_FA") { closeFAServo(); }
   
   else if (cmd == "CAM_ON") {
     digitalWrite(CAM_TRIGGER_PIN, HIGH);
@@ -108,14 +110,14 @@ void processCommand(String cmd) {
   }
   
   else if (cmd == "OPEN_ALL") {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
       servos[i].write(SERVO_OPEN_ANGLE);
       delay(200);
     }
     Serial.println("ACK_OPEN_ALL");
   }
   else if (cmd == "CLOSE_ALL") {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
       servos[i].write(SERVO_CLOSE_ANGLE);
       delay(200);
     }
@@ -144,6 +146,24 @@ void closeServo(int index) {
   servos[index].write(SERVO_CLOSE_ANGLE);
   Serial.print("ACK_CLOSE_");
   Serial.println(index + 1);
+  blinkLED(1, 200);
+}
+
+/**
+ * Control logic for First Aid servo open
+ */
+void openFAServo() {
+  servos[4].write(SERVO_OPEN_ANGLE);
+  Serial.println("ACK_OPEN_FA");
+  blinkLED(2, 200); // 2 blinks for FA
+}
+
+/**
+ * Control logic for First Aid servo close
+ */
+void closeFAServo() {
+  servos[4].write(SERVO_CLOSE_ANGLE);
+  Serial.println("ACK_CLOSE_FA");
   blinkLED(1, 200);
 }
 

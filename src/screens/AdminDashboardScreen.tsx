@@ -42,7 +42,7 @@ import QRCode from 'qrcode';
 
 const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: any) => {
   const { t } = useAppContext();
-  const [statuses, setStatuses] = useState<Record<number, string>>({ 1: 'Closed', 2: 'Closed', 3: 'Closed', 4: 'Closed' });
+  const [statuses, setStatuses] = useState<Record<string, string>>({ 1: 'Closed', 2: 'Closed', 3: 'Closed', 4: 'Closed', 'FA': 'Closed' });
   const [debugOpen, setDebugOpen] = useState(false);
   const [testCmd, setTestCmd] = useState('');
 
@@ -52,12 +52,14 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
       setSerialLog((prev: any) => [{ timestamp, type: 'IN', msg }, ...prev].slice(0, 20));
       
       if (msg.includes('ACK_OPEN')) {
-        const num = parseInt(msg.split('_')[2]);
-        setStatuses(prev => ({ ...prev, [num]: 'Open' }));
+        const parts = msg.split('_');
+        const key = parts[2] === 'FA' ? 'FA' : parseInt(parts[2]);
+        setStatuses(prev => ({ ...prev, [key]: 'Open' }));
       }
       if (msg.includes('ACK_CLOSE')) {
-        const num = parseInt(msg.split('_')[2]);
-        setStatuses(prev => ({ ...prev, [num]: 'Closed' }));
+        const parts = msg.split('_');
+        const key = parts[2] === 'FA' ? 'FA' : parseInt(parts[2]);
+        setStatuses(prev => ({ ...prev, [key]: 'Closed' }));
       }
     });
   }, []);
@@ -93,12 +95,29 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
       handleClose(i);
       await new Promise(r => setTimeout(r, 200));
     }
+    handleCloseFA();
     fetch('/api/logs/admin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: "Admin closed all compartments" })
     });
   };
+
+  const handleOpenFA = () => {
+    const cmd = `OPEN_FA`;
+    sendCommand(cmd);
+    const timestamp = new Date().toLocaleTimeString();
+    setSerialLog((prev: any) => [{ timestamp, type: 'OUT', msg: cmd }, ...prev].slice(0, 20));
+  };
+
+  const handleCloseFA = () => {
+    const cmd = `CLOSE_FA`;
+    sendCommand(cmd);
+    const timestamp = new Date().toLocaleTimeString();
+    setSerialLog((prev: any) => [{ timestamp, type: 'OUT', msg: cmd }, ...prev].slice(0, 20));
+  };
+
+  const isFAOpen = statuses['FA'] === 'Open';
 
   return (
     <div className="flex-1 flex flex-col gap-8 overflow-y-auto pr-2 pb-8">
@@ -178,6 +197,37 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
           <LogOut size={24} className="rotate-180" />
           Close All Compartments
         </motion.button>
+      </div>
+
+      {/* First Aid Emergency Control */}
+      <div className="glass-card p-8 border border-brand-danger/20 flex items-center justify-between bg-[rgba(255,82,82,0.05)]">
+        <div className="flex items-center gap-6">
+          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${isFAOpen ? 'bg-brand-danger text-white' : 'bg-[rgba(255,82,82,0.1)] text-brand-danger'}`}>
+            <Activity size={32} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-white uppercase tracking-widest">First Aid Emergency Control</h3>
+            <p className="text-sm text-text-muted">Direct hardware override for first aid compartment</p>
+          </div>
+        </div>
+        <div className="flex gap-4">
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={handleOpenFA}
+            disabled={isFAOpen}
+            className={`h-14 px-10 rounded-full font-bold uppercase tracking-widest text-sm transition-all ${isFAOpen ? 'bg-white/5 text-text-muted cursor-not-allowed' : 'bg-brand-danger text-white shadow-[0_0_20px_rgba(255,82,82,0.4)]'}`}
+          >
+            Emergency Open
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={handleCloseFA}
+            disabled={!isFAOpen}
+            className={`h-14 px-10 rounded-full font-bold uppercase tracking-widest text-sm transition-all border-2 border-brand-danger text-brand-danger ${!isFAOpen ? 'opacity-30 cursor-not-allowed' : 'hover:bg-brand-danger hover:text-white'}`}
+          >
+            Close Now
+          </motion.button>
+        </div>
       </div>
 
       {/* Debug Panel */}
