@@ -21,7 +21,7 @@ export const DiagnosisScreen = () => {
   const { t, language, currentPatient, setCurrentSession } = useAppContext();
   const navigate = useNavigate();
 
-  const [currentQuestionId, setCurrentQuestionId] = useState<string>('Q0');
+  const [currentQuestionId, setCurrentQuestionId] = useState<string>('Q1');
   const [sessionAnswers, setSessionAnswers] = useState<any[]>([]);
   const [selectedOptions, setSelectedOptions] = useState<number[]>([]);
   const [diseaseScores, setDiseaseScores] = useState<Record<string, number>>({});
@@ -54,6 +54,7 @@ export const DiagnosisScreen = () => {
   }, [isAnalyzing]);
 
   const handleOptionToggle = (idx: number) => {
+    if (!currentQuestion) return;
     if (currentQuestion.type === 'multiple_select') {
       if (selectedOptions.includes(idx)) {
         setSelectedOptions(selectedOptions.filter(i => i !== idx));
@@ -70,11 +71,12 @@ export const DiagnosisScreen = () => {
   };
 
   const processAnswer = (indices: number[]) => {
+    if (!currentQuestion) return;
     const newScores = { ...diseaseScores };
     indices.forEach(idx => {
-      const opt = currentQuestion.options[idx];
-      Object.entries(opt.symptom_weights).forEach(([disease, weight]) => {
-        newScores[disease] = (newScores[disease] || 0) + weight;
+      const opt = currentQuestion.options[idx] as any;
+      Object.entries(opt.symptom_weights || {}).forEach(([disease, weight]) => {
+        newScores[disease] = (newScores[disease] || 0) + (weight as number);
       });
     });
 
@@ -82,7 +84,7 @@ export const DiagnosisScreen = () => {
       question_id: currentQuestionId,
       question_text: language === 'en' ? currentQuestion.text_en : currentQuestion.text_hi,
       selected_option: currentQuestion.type === 'multiple_select' ? indices : indices[0],
-      weights_added: indices.map(idx => currentQuestion.options[idx].symptom_weights)
+      weights_added: indices.map(idx => (currentQuestion.options[idx] as any).symptom_weights || {})
     };
 
     const newSessionAnswers = [...sessionAnswers, newAnswer];
@@ -358,7 +360,7 @@ export const DiagnosisScreen = () => {
             </div>
 
             <h2 className="text-4xl font-bold text-text-primary mb-6 leading-tight">
-              {language === 'en' ? currentQuestion.text_en : currentQuestion.text_hi}
+              {language === 'en' ? currentQuestion?.text_en : currentQuestion?.text_hi}
             </h2>
 
             <div className="flex items-center gap-2 mb-10 text-text-muted italic text-sm">
@@ -375,7 +377,7 @@ export const DiagnosisScreen = () => {
                {t('diagnosis.crossRef')}
             </div>
 
-            {currentQuestion.camera_trigger && !aiResult && (
+            {currentQuestion?.camera_trigger && !aiResult && (
                <motion.button 
                  whileTap={{ scale: 0.98 }}
                  onClick={startCamera}
@@ -400,7 +402,7 @@ export const DiagnosisScreen = () => {
             )}
 
              <div className="grid grid-cols-1 gap-4 mt-auto">
-               {currentQuestion.options.map((option, idx) => {
+               {currentQuestion?.options?.map((option, idx) => {
                  const isSelected = selectedOptions.includes(idx);
                  
                  return (
@@ -438,7 +440,7 @@ export const DiagnosisScreen = () => {
                  {t('common.back') || 'Back'}
                </motion.button>
 
-               {(currentQuestion.type === 'multiple_select' || currentQuestion.type === 'multiple_choice') && (
+               {(currentQuestion?.type === 'multiple_select' || currentQuestion?.type === 'multiple_choice') && (
                  <motion.button 
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
