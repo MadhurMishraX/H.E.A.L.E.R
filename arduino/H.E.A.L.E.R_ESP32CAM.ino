@@ -20,9 +20,11 @@
 #include "driver/rtc_io.h"
 #include <WiFi.h>
 #include <WebServer.h>
+#include <ESPmDNS.h>
 
 // --- Configuration ---
 const bool WIFI_ENABLED = true;
+const bool SD_ENABLED = false; // Set to true later when you insert an SD card
 const char* WIFI_SSID = "HEALER_Control";
 const char* WIFI_PASSWORD = "password123";
 
@@ -30,6 +32,8 @@ const int TRIGGER_PIN = 13;
 const int CAPTURE_INTERVAL = 2000; // 2 seconds
 
 // --- State Variables ---
+String lastSerialMsg = "";
+String serialBuffer = "";
 bool isCapturing = false;
 unsigned long lastCaptureTime = 0;
 unsigned long sessionStartTime = 0;
@@ -105,19 +109,35 @@ void setup() {
   }
 
   // 3. Initialize SD Card
-  if (!SD_MMC.begin()) {
-    Serial.println("SD Card Mount Failed");
-    return;
+  if (SD_ENABLED) {
+    if (!SD_MMC.begin()) {
+      Serial.println("SD Card Mount Failed");
+    } else {
+      if (!SD_MMC.exists("/photos")) {
+        SD_MMC.mkdir("/photos");
+      }
+    }
   }
 
-  // Create photos directory
-  if (!SD_MMC.exists("/photos")) {
-    SD_MMC.mkdir("/photos");
-  }
-
-  // 4. Initialize Wi-Fi and Server
+  // 4. Initialize Wi-Fi (Connect to your Router)
   if (WIFI_ENABLED) {
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    delay(100);
+
+    // NEW: Scan for networks to see if the Tablet is visible
+    Serial.println("Scanning for networks...");
+    int n = WiFi.scanNetworks();
+    Serial.printf("%d networks found\n", n);
+    for (int i = 0; i < n; ++i) {
+      Serial.printf("%d: %s (%d)%s\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i), (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? " " : "*");
+      delay(10);
+    }
+
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.print("Connecting to WiFi");
+    WiFi.printDiag(Serial); // ADD THIS TO SEE WHAT IS WRONG
+    
     while (WiFi.status() != WL_CONNECTED) {
       delay(500);
       Serial.print(".");
@@ -128,16 +148,68 @@ void setup() {
     Serial.println(WiFi.localIP());
 
     server.on("/photos", HTTP_GET, handleListPhotos);
+    server.on("/cmd", HTTP_GET, handleWiFiCommand); 
+    server.on("/getMsg", HTTP_GET, handleWiFiGetMessage);
     server.onNotFound(handlePhotoRequest);
     server.begin();
+
+    // Start mDNS
+    if (MDNS.begin("healer")) {
+      Serial.println("mDNS responder started: http://healer.local");
+      MDNS.addService("http", "tcp", 80);
+    }
   }
 
   Serial.println("ESP32CAM_READY");
 }
 
+/**
+ * NEW: Handles commands coming from the Web App via WiFi
+ * Example: http://192.168.1.50/cmd?v=OPEN_1
+ */
+void handleWiFiCommand() {
+  if (server.hasArg("v")) {
+    String command = server.arg("v");
+    
+    // Relay the command to the Arduino Mega via Serial
+    Serial.println(command);
+    
+    server.send(200, "text/plain", "ACK: " + command);
+  } else {
+    server.send(400, "text/plain", "ERR: No command provided");
+  }
+}
+
+/**
+ * NEW: Sends the last received hardware message to the Web App
+ */
+void handleWiFiGetMessage() {
+  server.sendHeader("Access-Control-Allow-Origin", "*"); // Allow Android/Web to read data
+  if (lastSerialMsg.length() > 0) {
+    server.send(200, "text/plain", lastSerialMsg);
+    lastSerialMsg = ""; // Clear buffer after sending
+  } else {
+    server.send(200, "text/plain", ""); // Empty response if no new message
+  }
+}
+
 void loop() {
   if (WIFI_ENABLED) {
     server.handleClient();
+  }
+
+  // NEW: Faster, Non-blocking Read from Arduino Mega
+  while (Serial.available()) {
+    char c = (char)Serial.read();
+    if (c == '\n') {
+      serialBuffer.trim();
+      if (serialBuffer.length() > 0) {
+        lastSerialMsg = serialBuffer; // Save finished line to mailbox
+        serialBuffer = "";            // Clear accumulator
+      }
+    } else if (c != '\r') {
+      serialBuffer += c;
+    }
   }
 
   int triggerStatus = digitalRead(TRIGGER_PIN);
@@ -168,6 +240,8 @@ void loop() {
 }
 
 void capturePhoto() {
+  if (!SD_ENABLED) return;
+  
   camera_fb_t * fb = NULL;
   fb = esp_camera_fb_get();
   if (!fb) {

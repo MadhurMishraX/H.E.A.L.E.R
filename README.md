@@ -12,14 +12,14 @@ H.E.A.L.E.R is a production-grade, hardware-integrated intelligent medical kiosk
 
 ## 🚀 Key Features
 
-### 🧠 Smart Diagnosis Engine (v3.0 - Redesigned)
-- **4 Main tracks:** Focused on most common conditions in India:
-  - **Track A:** Flu / Fever / Viral
-  - **Track B:** Headache / Migraine
-  - **Track C:** Stomach / Gastroenteritis / Acidity
-  - **Track D:** Skin Infections / Fungal / Allergy
-- **Professional Guidelines:** Integrated dosage guidelines for Adults, Children (1-12 years), and Elderly (60+).
-- **Safety Overrides:** Mandatory red-flag checks for severe symptoms (e.g., meningitis signs, severe dehydration, respiratory distress).
+### 🧠 Smart Diagnosis Engine (v2.0)
+- **Dynamic Branching:** 12+ diagnostic tracks (Fever, Headache, Respiratory, Gastric, UTI, etc.) with adaptive question trees.
+- **Weighted Scoring Logic:** Professional-grade algorithm that calculates confidence scores based on real-time question weights.
+- **Confidence Tiers:** 
+  - **High Confidence (>70%):** Direct dispensing recommended.
+  - **Likely Condition (35-70%):** Diagnosis provided with mandatory doctor confirmation advice.
+  - **Possible Match (<35%):** Auto-referral to medical professional.
+- **Serious Condition Guards:** Hardcoded safety flags to detect Sepsis, Severe Hypertension, or Emergencies, triggering instant "Red Alert" auto-referrals.
 
 ### ⚙️ Hardware-Integrated Dispensing
 - **Real-time Web Serial Control:** Communicates directly with Arduino Mega from the browser without drivers.
@@ -99,7 +99,7 @@ npm run dev
 | **Frontend** | React 19, Motion, Tailwind | User interface & animations |
 | **Backend** | Express, Node.js | API routing & Email service |
 | **Database** | SQLite3 | Local storage for patients, logs, and settings |
-| **Logic** | DiagnosisEngine v3 | Clinical decision support system |
+| **Logic** | DiagnosisEngine v2 | Clinical decision support system |
 | **Control** | Web Serial API | Direct browser-to-hardware data bridge |
 | **Network** | Nodemailer | Automated prescription delivery |
 
@@ -109,7 +109,7 @@ npm run dev
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-Developed with ❤️ by **[Madhur Mishra](https://github.com/Madhurmishrax)** & **[Nikhil Kumar](https://github.com/NikhilKY64)**.
+Developed with ❤️ by **[Madhur Mishra](https://github.com/Madhurmishrax)** and **[Nikhil Kumar Yadav](https://github.com/NikhilKY64)**.
 
 ---
 Developed with a focus on medical integrity and high-availability kiosk deployment.
