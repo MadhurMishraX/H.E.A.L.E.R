@@ -99,7 +99,7 @@ npm run dev
 | **Frontend** | React 19, Motion, Tailwind | User interface & animations |
 | **Backend** | Express, Node.js | API routing & Email service |
 | **Database** | SQLite3 | Local storage for patients, logs, and settings |
-| **Logic** | DiagnosisEngine v2 | Clinical decision support system |
+| **Logic** | DiagnosisEngine v3 | Clinical decision support system |
 | **Control** | Web Serial API | Direct browser-to-hardware data bridge |
 | **Network** | Nodemailer | Automated prescription delivery |
 
