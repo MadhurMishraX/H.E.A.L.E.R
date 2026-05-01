@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { initSerial, onMessage, closeSerial } from '../utils/serialComm';
-import { getAllSettings } from '../services/settingsService';
+import { getSetting, addAdminLog } from '../services/dbService';
 
 export const AdminLoginScreen = () => {
   const { t } = useAppContext();
@@ -33,8 +33,8 @@ export const AdminLoginScreen = () => {
   useEffect(() => {
     const setup = async () => {
       // Get admin pin from settings
-      const settings = await getAllSettings();
-      setAdminPin(settings.admin_pin || '1234');
+      const pinSetting = await getSetting('admin_pin');
+      setAdminPin(pinSetting || '1234');
 
       // Init serial and listen for RFID
       await initSerial();
@@ -91,11 +91,7 @@ export const AdminLoginScreen = () => {
   const handleConfirm = async () => {
     if (pin === adminPin) {
       // Log success
-      await fetch('/api/logs/admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: `Admin login successful [${new Date().toISOString()}]` })
-      });
+      await addAdminLog(`Admin login successful [${new Date().toISOString()}]`);
       navigate('/admin/dashboard');
     } else {
       const newAttempts = attempts + 1;

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { initSerial, sendCommand, onMessage, closeSerial } from '../utils/serialComm';
+import { dispense, addAdminLog } from '../services/dbService';
 
 export const DispensingScreen = () => {
   const { t, currentPatient } = useAppContext();
@@ -50,11 +51,7 @@ export const DispensingScreen = () => {
 
       // 2. Register listener
       onMessage((msg) => {
-        fetch('/api/logs/admin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: `SERIAL ACK: ${msg}` })
-        });
+        addAdminLog(`SERIAL ACK: ${msg}`).catch(() => {});
       });
 
       // 3. Send Commands
@@ -98,11 +95,7 @@ export const DispensingScreen = () => {
     await sendCommand(`CAM_OFF`);
 
     if (isFirstAid) {
-      fetch('/api/logs/admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: "Instant First Aid Dispensed" })
-      });
+      addAdminLog("Instant First Aid Dispensed").catch(() => {});
       setIsCompleted(true);
       setIsProcessing(false);
       return;
@@ -110,28 +103,17 @@ export const DispensingScreen = () => {
 
     try {
       // 6. DB Updates & Logging
-      const response = await fetch('/api/dispense', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          compartment_number,
-          quantity_dispensed,
-          session_id,
-          medicine_name,
-          patient_id: currentPatient?.id,
-          patient_name: currentPatient?.name
-        })
-      });
-
-      if (response.ok) {
-        setIsCompleted(true);
-      } else {
-        const errorData = await response.json();
-        setDbError(errorData.error || t('dispensing.stockError'));
-      }
-    } catch (err) {
+      await dispense(
+        session_id,
+        currentPatient?.id!,
+        medicine_name,
+        compartment_number,
+        quantity_dispensed
+      );
+      setIsCompleted(true);
+    } catch (err: any) {
       console.error(err);
-      setDbError(t('dispensing.stockError'));
+      setDbError(err.message || t('dispensing.stockError'));
     } finally {
       setIsProcessing(false);
     }

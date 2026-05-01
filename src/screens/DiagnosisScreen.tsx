@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { QUESTION_TREE, calculateDiagnosis, getNextQuestion } from '../utils/diagnosisEngine';
 import { getAgeGroup } from '../utils/ageUtils';
+import { createSession, createPrescription, getDiseaseMap } from '../services/dbService';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Stethoscope, 
@@ -134,26 +135,20 @@ export const DiagnosisScreen = () => {
 
     setTimeout(async () => {
       try {
-        const mapResponse = await fetch(`/api/disease-map/${results.diagnosis}`);
-        const diseaseMap = await mapResponse.json();
+        const diseaseMap = await getDiseaseMap(results.diagnosis);
 
         const sessionPayload = {
-          patient_id: currentPatient.id,
+          patient_id: currentPatient.id!,
           timestamp: new Date().toISOString(),
           diagnosed_disease: results.diagnosis,
           confidence_score: results.confidence,
-          top_alternatives: results.top3,
+          top_alternatives: "",
           ai_used: aiResult ? 1 : 0,
-          ai_result: aiResult ? JSON.stringify(aiResult) : null,
+          ai_result: aiResult ? JSON.stringify(aiResult) : "",
           action_taken: results.action
         };
 
-        const sessionRes = await fetch('/api/sessions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(sessionPayload)
-        });
-        const { id: sessionId } = await sessionRes.json();
+        const sessionId = await createSession(sessionPayload);
 
         // Always try to create a prescription entry if we have medicine info or just generic advice
         const medicineName = diseaseMap?.medicine_name || "General Care / Consult Doctor";
@@ -161,17 +156,13 @@ export const DiagnosisScreen = () => {
                        ageGroup === 'adult' ? diseaseMap.dosage_adult : 
                        diseaseMap.dosage_elderly) : "As recommended by physician";
 
-        await fetch('/api/prescriptions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            session_id: sessionId,
-            medicine_name: medicineName,
-            dosage: dosage || "Consult pharmacist",
-            frequency: diseaseMap?.is_serious ? "URGENT" : "As instructed", 
-            duration: diseaseMap?.is_serious ? "Immediate" : "5 days",
-            compartment_number: diseaseMap?.compartment_number || 0
-          })
+        await createPrescription({
+          session_id: sessionId,
+          medicine_name: medicineName,
+          dosage: dosage || "Consult pharmacist",
+          frequency: diseaseMap?.is_serious ? "URGENT" : "As instructed", 
+          duration: diseaseMap?.is_serious ? "Immediate" : "5 days",
+          compartment_number: diseaseMap?.compartment_number ?? null
         });
 
         setCurrentSession({ id: sessionId, ...sessionPayload });

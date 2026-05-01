@@ -24,6 +24,15 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { sendPrescriptionEmail, sendAutoReferralEmail } from '../services/emailService';
+import {
+  getPrescriptionsBySession,
+  getInventory,
+  getAllSettings,
+  getDiseaseMap,
+  checkDispensed,
+  addUnavailabilityLog,
+  addAdminLog,
+} from '../services/dbService';
 
 export const PrescriptionScreen = () => {
   const { t, currentPatient, currentSession, setCurrentPatient, setCurrentSession } = useAppContext();
@@ -38,17 +47,12 @@ export const PrescriptionScreen = () => {
 
   const fetchData = async () => {
     try {
-      const [prescRes, invRes, setRes, mapRes] = await Promise.all([
-        fetch(`/api/prescriptions/session/${currentSession.id}`),
-        fetch('/api/inventory'),
-        fetch('/api/settings'),
-        fetch(`/api/disease-map/${currentSession.diagnosed_disease}`)
+      const [prescData, invData, setData, mapData] = await Promise.all([
+        getPrescriptionsBySession(currentSession.id),
+        getInventory(),
+        getAllSettings(),
+        getDiseaseMap(currentSession.diagnosed_disease)
       ]);
-
-      const prescData = await prescRes.json();
-      const invData = await invRes.json();
-      const setData = await setRes.json();
-      const mapData = await mapRes.json();
 
       setPrescriptions(prescData);
       setInventory(invData);
@@ -58,26 +62,23 @@ export const PrescriptionScreen = () => {
       // Check which items are dispensed
       const dispensedMap: Record<string, boolean> = {};
       await Promise.all(prescData.map(async (p: any) => {
-        const checkRes = await fetch(`/api/dispense/check/${currentSession.id}/${p.medicine_name}`);
-        const checkData = await checkRes.json();
-        dispensedMap[p.medicine_name] = checkData.dispensed;
+        const dispensed = await checkDispensed(currentSession.id, p.medicine_name);
+        dispensedMap[p.medicine_name] = dispensed;
 
         // Unavailability logging
-        if (!checkData.dispensed) {
+        if (!dispensed) {
           const invItem = invData.find((i: any) => i.compartment_number === p.compartment_number);
           const isDispensable = p.compartment_number > 0 && mapData?.is_dispensable === 1;
           const outOfStock = invItem ? invItem.current_count <= 0 : true;
 
           if (!isDispensable || outOfStock) {
-             await fetch('/api/logs/unavailability', {
-               method: 'POST',
-               headers: { 'Content-Type': 'application/json' },
-               body: JSON.stringify({ 
-                 reason: !isDispensable ? 'manual_pharmacy' : 'out_of_stock',
-                 patient_id: currentPatient?.id,
-                 session_id: currentSession?.id
-               })
-             }).catch(() => {});
+             await addUnavailabilityLog(
+               currentSession.id,
+               currentPatient?.id,
+               p.medicine_name,
+               p.compartment_number,
+               !isDispensable ? 'manual_pharmacy' : 'out_of_stock'
+             ).catch(() => {});
           }
         }
       }));
@@ -104,21 +105,15 @@ export const PrescriptionScreen = () => {
   const handleAutoReferral = async (currentSettings: any, prescList: any[]) => {
     const message = `Auto-referral sent for patient ${currentPatient?.name}, disease ${currentSession?.diagnosed_disease}, session ${currentSession?.id}`;
     
-    await fetch('/api/logs/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message })
-    });
+    await addAdminLog(message);
 
-    await fetch('/api/logs/unavailability', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        reason: 'serious_referred',
-        patient_id: currentPatient?.id,
-        session_id: currentSession?.id
-      })
-    });
+    await addUnavailabilityLog(
+      currentSession?.id,
+      currentPatient?.id,
+      "Doctor Referral",
+      null,
+      'serious_referred'
+    );
 
     try {
       await sendAutoReferralEmail(currentPatient, currentSession, prescList);
@@ -141,13 +136,7 @@ export const PrescriptionScreen = () => {
     const whatsappUrl = `whatsapp://send?phone=${phone}`;
     window.location.href = whatsappUrl;
     
-    fetch('/api/logs/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        message: `Patient ${currentPatient?.name} initiated doctor call, session ${currentSession?.id}` 
-      })
-    });
+    addAdminLog(`Patient ${currentPatient?.name} initiated doctor call, session ${currentSession?.id}`);
   };
 
   const handleDone = () => {

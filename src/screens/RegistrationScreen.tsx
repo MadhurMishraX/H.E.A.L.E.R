@@ -7,6 +7,7 @@ import { QRCodeDisplay } from '../utils/qrUtils';
 import { sendQRCodeEmail } from '../services/emailService';
 import { getAllSettings } from '../services/settingsService';
 import { motion, AnimatePresence } from 'motion/react';
+import { registerPatient, updatePatientQR } from '../services/dbService';
 
 export const RegistrationScreen = () => {
   const { t, language, setCurrentPatient } = useAppContext();
@@ -74,25 +75,21 @@ export const RegistrationScreen = () => {
 
     try {
       const { confirmPassword, ...submitData } = formData;
-      const response = await fetch('/api/patients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(submitData)
+      // Initialize with empty QR code and current timestamp
+      const newPatient = await registerPatient({
+        ...submitData,
+        age: parseInt(submitData.age),
+        qr_code: '',
+        created_at: new Date().toISOString()
       });
 
-      if (response.ok) {
-        let patient = await response.json();
-        const qrCode = `HEALER_PATIENT_${patient.id}`;
-        const updateResponse = await fetch(`/api/patients/${patient.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ qr_code: qrCode })
-        });
+      if (newPatient && newPatient.id) {
+        const qrCode = `HEALER_PATIENT_${newPatient.id}`;
+        const updatedPatient = await updatePatientQR(newPatient.id, qrCode);
 
-        if (updateResponse.ok) {
-          patient = await updateResponse.json();
-          setRegisteredPatient(patient);
-          setCurrentPatient(patient);
+        if (updatedPatient) {
+          setRegisteredPatient(updatedPatient);
+          setCurrentPatient(updatedPatient);
           setShowQRModal(true);
         }
       }

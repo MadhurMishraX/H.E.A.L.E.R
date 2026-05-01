@@ -33,6 +33,18 @@ import {
   LineChart, Line
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  getAllPatients,
+  getPatientFullHistory,
+  getAnalyticsDiseases,
+  getAnalyticsDailyVolume,
+  getAnalyticsTopMedicines,
+  getAnalyticsUnavailability,
+  updateInventoryItem,
+  getUnavailabilityLogs,
+  addAdminLog,
+  getInventory
+} from '../services/dbService';
 import { getAllSettings, setSetting } from '../services/settingsService';
 import { sendCommand, onMessage } from '../utils/serialComm';
 import { sendQRCodeEmail } from '../services/emailService';
@@ -83,11 +95,7 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
       handleOpen(i);
       await new Promise(r => setTimeout(r, 200));
     }
-    fetch('/api/logs/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: "Admin opened all compartments for refill" })
-    });
+    addAdminLog("Admin opened all compartments for refill").catch(() => {});
   };
 
   const handleCloseAll = async () => {
@@ -96,11 +104,7 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
       await new Promise(r => setTimeout(r, 200));
     }
     handleCloseFA();
-    fetch('/api/logs/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: "Admin closed all compartments" })
-    });
+    addAdminLog("Admin closed all compartments").catch(() => {});
   };
 
   const handleOpenFA = () => {
@@ -306,26 +310,16 @@ const InventoryTab = ({ inventory, refreshInventory }: any) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch('/api/admin/unavailability-log')
-      .then(res => res.json())
-      .then(setUnavailLogs);
+    getUnavailabilityLogs().then(setUnavailLogs);
   }, []);
 
   const handleSave = async (n: number) => {
     setLoading(true);
     const item = formData[n] || inventory.find((i: any) => i.compartment_number === n);
     
-    await fetch('/api/admin/inventory/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(item)
-    });
+    await updateInventoryItem(item.compartment_number, item.medicine_name, item.current_count);
 
-    await fetch('/api/logs/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: `Admin updated inventory: compartment ${n} set to ${item.current_count} units` })
-    });
+    await addAdminLog(`Admin updated inventory: compartment ${n} set to ${item.current_count} units`);
 
     setEditingId(null);
     setFormData((prev: any) => {
@@ -476,13 +470,12 @@ const PatientsTab = () => {
   const [expandedSession, setExpandedSession] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch('/api/admin/patients').then(res => res.json()).then(setPatients);
+    getAllPatients().then(setPatients as any);
   }, []);
 
   const selectPatient = async (id: number) => {
     setLoading(true);
-    const res = await fetch(`/api/admin/patients/${id}/full`);
-    const data = await res.json();
+    const data = await getPatientFullHistory(id);
     setSelectedPatient(data);
     setLoading(false);
     setExpandedSession(null);
@@ -671,10 +664,10 @@ const AnalyticsTab = () => {
   const [unavailData, setUnavailData] = useState([]);
 
   useEffect(() => {
-    fetch('/api/admin/analytics/diseases').then(res => res.json()).then(setDiseaseData);
-    fetch('/api/admin/analytics/daily-volume').then(res => res.json()).then(setDailyVolume);
-    fetch('/api/admin/analytics/top-medicines').then(res => res.json()).then(setTopMeds);
-    fetch('/api/admin/analytics/unavailability').then(res => res.json()).then(setUnavailData);
+    getAnalyticsDiseases().then(setDiseaseData as any);
+    getAnalyticsDailyVolume().then(setDailyVolume as any);
+    getAnalyticsTopMedicines().then(setTopMeds as any);
+    getAnalyticsUnavailability().then(setUnavailData as any);
   }, []);
 
   const COLORS = ['#2196F3', '#00BCD4', '#0288D1', '#0097A7', '#1E88E5'];
@@ -757,7 +750,7 @@ const SettingsTab = () => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   useEffect(() => {
-    fetch('/api/settings').then(res => res.json()).then(setFormData);
+    getAllSettings().then(setFormData);
   }, []);
 
   const handleSave = async () => {
@@ -838,7 +831,7 @@ export const AdminDashboardScreen = () => {
   const [serialLog, setSerialLog] = useState<{ timestamp: string; type: 'IN' | 'OUT'; msg: string }[]>([]);
 
   const refreshInventory = () => {
-    fetch('/api/inventory').then(res => res.json()).then(setInventory);
+    getInventory().then(setInventory as any);
   };
 
   useEffect(() => {
@@ -846,11 +839,7 @@ export const AdminDashboardScreen = () => {
   }, []);
 
   const handleLogout = () => {
-    fetch('/api/logs/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: `Admin logout [${new Date().toISOString()}]` })
-    });
+    addAdminLog(`Admin logout [${new Date().toISOString()}]`).catch(() => {});
     navigate('/');
   };
 

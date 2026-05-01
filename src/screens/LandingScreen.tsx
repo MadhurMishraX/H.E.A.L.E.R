@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { motion, AnimatePresence } from 'motion/react';
+import { loginPatient, loginPatientByQR, getPatientFullHistory } from '../services/dbService';
 
 export const LandingScreen = () => {
   const { t, language, setLanguage, setCurrentPatient, isHardwareConnected } = useAppContext();
@@ -49,17 +50,17 @@ export const LandingScreen = () => {
 
   const handleScan = async (scannedId: string) => {
     try {
-      const response = await fetch(`/api/admin/patients/${scannedId.replace('HEALER_PATIENT_', '')}/full`);
-      if (response.ok) {
-        const patient = await response.json();
-        setCurrentPatient(patient);
+      const patient = await loginPatientByQR(scannedId);
+      if (patient && patient.id) {
+        const fullPatient = await getPatientFullHistory(patient.id);
+        setCurrentPatient(fullPatient);
         navigate('/dashboard');
       } else {
         setErrorMessage(t('landing.errorPatientNotFound'));
         setTimeout(() => setErrorMessage(''), 5000);
       }
     } catch (err) {
-      setErrorMessage("Error connecting to server.");
+      setErrorMessage("Error connecting to database.");
     }
   };
 
@@ -68,24 +69,16 @@ export const LandingScreen = () => {
     setIsLoggingIn(true);
     setErrorMessage('');
     try {
-      const response = await fetch('/api/patients/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginForm)
-      });
-      if (response.ok) {
-        const patient = await response.json();
-        const fullRes = await fetch(`/api/admin/patients/${patient.id}/full`);
-        if (fullRes.ok) {
-          const fullPatient = await fullRes.json();
-          setCurrentPatient(fullPatient);
-          navigate('/dashboard');
-        }
+      const patient = await loginPatient(loginForm.email, loginForm.password);
+      if (patient && patient.id) {
+        const fullPatient = await getPatientFullHistory(patient.id);
+        setCurrentPatient(fullPatient);
+        navigate('/dashboard');
       } else {
         setErrorMessage(t('landing.errorLoginFailed'));
       }
     } catch (err) {
-      setErrorMessage("Connection error.");
+      setErrorMessage("Database error.");
     } finally {
       setIsLoggingIn(false);
     }
