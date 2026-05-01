@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeDisplay } from '../utils/qrUtils';
+import { getPatientFullHistory } from '../services/dbService';
 import { sendQRCodeEmail } from '../services/emailService';
 import QRCode from 'qrcode';
 
@@ -34,9 +35,10 @@ export const PatientDashboardScreen = () => {
 
     const fetchHistory = async () => {
       try {
-        const response = await fetch(`/api/admin/patients/${currentPatient.id}/full`);
-        const data = await response.json();
-        setSessions(data.sessions || []);
+        const data = await getPatientFullHistory(currentPatient.id);
+        if (data) {
+          setSessions(data.sessions || []);
+        }
       } catch (err) {
         console.error("Failed to fetch visit history", err);
       } finally {

@@ -11,27 +11,26 @@ import {
   ChevronRight,
   Activity,
   Wifi,
-  PowerOff
+  Usb,
+  Search,
+  RefreshCw,
+  Power,
+  Globe,
+  Signal,
+  Cpu
 } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { motion, AnimatePresence } from 'motion/react';
-import { db } from '../utils/db';
+import { loginPatient, loginPatientByQR, getPatientFullHistory } from '../services/dbService';
+import { onMessage } from '../utils/serialComm';
 
 export const LandingScreen = () => {
   const { 
-    t, 
-    language, 
-    setLanguage, 
-    setCurrentPatient, 
-    isHardwareConnected, 
-    connectHardware,
-    commMode,
-    setCommMode,
-    espIp,
-    setEspIp,
-    disconnectHardware,
-    discoverHardware
+    t, language, setLanguage, setCurrentPatient, 
+    isHardwareConnected, setIsHardwareConnected, commMode, setCommMode, espIp, setEspIp,
+    connectHardware, discoverHardware, disconnectHardware 
   } = useAppContext();
+  
   const navigate = useNavigate();
   const [showScanner, setShowScanner] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -39,11 +38,44 @@ export const LandingScreen = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
 
   const handleFirstAid = () => {
     navigate('/dispensing', { state: { isFirstAid: true } });
+  };
+
+  const handleHardwareConnect = async () => {
+    setIsScanning(true);
+    setScanResult(null); // Reset scan result
+    const success = await connectHardware();
+    setIsScanning(false);
+    if (success) {
+      setScanResult('connected');
+      setTimeout(() => setShowStatusModal(false), 1500);
+    } else {
+      setScanResult('failed');
+    }
+  };
+
+  const handleForceConnect = () => {
+    setIsScanning(false);
+    setScanResult('connected');
+    setIsHardwareConnected(true);
+    setTimeout(() => setShowStatusModal(false), 1000);
+    console.warn("[Comm] User forced connection despite ping timeout.");
+  };
+
+  const handleHardwareDiscover = async () => {
+    setIsScanning(true);
+    setScanResult('scanning');
+    const ip = await discoverHardware();
+    setIsScanning(false);
+    if (ip) {
+      setScanResult('found');
+    } else {
+      setScanResult('not_found');
+    }
   };
 
   useEffect(() => {
@@ -60,58 +92,44 @@ export const LandingScreen = () => {
         setShowScanner(false);
       }, (error) => {});
     }
+
+    const removeRfidListener = onMessage(async (msg) => {
+      if (msg.startsWith('RFID_DETECTED:')) {
+        const cardId = msg.split(':')[1];
+        console.log(`[Landing] Card Tapped: ${cardId}`);
+        
+        // Try to login patient with this Card ID
+        const patient = await loginPatientByQR(cardId);
+        if (patient) {
+          console.log(`[Landing] Returning Patient Found: ${patient.name}`);
+          setCurrentPatient(patient);
+          navigate('/patient-dashboard');
+        } else {
+          console.log(`[Landing] New card or no patient found for ID: ${cardId}`);
+          setErrorMessage(t('login.patientNotFound'));
+        }
+      }
+    });
+
     return () => {
       if (scanner) scanner.clear().catch(err => console.error("Failed to clear scanner", err));
+      removeRfidListener();
     };
   }, [showScanner]);
 
-  const handleConnect = async () => {
-    setIsConnecting(true);
-    try {
-      const success = await connectHardware();
-      if (success) {
-        // We close modal if success (though ARDUINO_READY might take a second)
-        // For better UX, we can wait or show a success message
-        setTimeout(() => setShowStatusModal(false), 2000);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const handleDiscover = async () => {
-    setIsDiscovering(true);
-    setErrorMessage('');
-    try {
-      const foundIp = await discoverHardware();
-      if (!foundIp) {
-        setErrorMessage("Could not find hardware on this network.");
-      }
-    } catch (err) {
-      setErrorMessage("Network scan failed.");
-    } finally {
-      setIsDiscovering(false);
-    }
-  };
-
   const handleScan = async (scannedId: string) => {
     try {
-      const idStr = scannedId.replace('HEALER_PATIENT_', '');
-      const patientId = parseInt(idStr);
-      
-      const patient = await db.patients.get(patientId);
-      
-      if (patient) {
-        setCurrentPatient(patient);
+      const patient = await loginPatientByQR(scannedId);
+      if (patient && patient.id) {
+        const fullPatient = await getPatientFullHistory(patient.id);
+        setCurrentPatient(fullPatient);
         navigate('/dashboard');
       } else {
         setErrorMessage(t('landing.errorPatientNotFound'));
         setTimeout(() => setErrorMessage(''), 5000);
       }
     } catch (err) {
-      setErrorMessage("Error reading local database.");
+      setErrorMessage("Error connecting to database.");
     }
   };
 
@@ -120,19 +138,16 @@ export const LandingScreen = () => {
     setIsLoggingIn(true);
     setErrorMessage('');
     try {
-      // Offline Login: Search by email/phone in local patients table
-      const patient = await db.patients
-        .where('email').equals(loginForm.email)
-        .first();
-
-      if (patient) {
-        setCurrentPatient(patient);
+      const patient = await loginPatient(loginForm.email, loginForm.password);
+      if (patient && patient.id) {
+        const fullPatient = await getPatientFullHistory(patient.id);
+        setCurrentPatient(fullPatient);
         navigate('/dashboard');
       } else {
         setErrorMessage(t('landing.errorLoginFailed'));
       }
     } catch (err) {
-      setErrorMessage("Local database error.");
+      setErrorMessage("Database error.");
     } finally {
       setIsLoggingIn(false);
     }
@@ -160,7 +175,7 @@ export const LandingScreen = () => {
           className={`w-3 h-3 rounded-full ${isHardwareConnected ? 'bg-brand-success shadow-[0_0_12px_var(--color-brand-success)]' : 'bg-brand-danger shadow-[0_0_12px_var(--color-brand-danger)] animate-pulse'}`} 
         />
         <span className="text-sm font-bold uppercase tracking-[1.5px] text-text-secondary">
-          {isHardwareConnected ? 'Hardware Ready' : 'Hardware Offline'}
+          {isHardwareConnected ? 'Hardware Ready' : 'Hardware Setup'}
         </span>
       </motion.button>
 
@@ -268,7 +283,7 @@ export const LandingScreen = () => {
             <ChevronRight className="text-text-muted group-hover:text-brand-danger transition-colors" />
           </motion.button>
 
-          {/* Button 3: Admin Access */}
+          {/* Button 4: Admin Access */}
           <motion.button
             whileTap={{ scale: 0.96 }}
             onClick={() => navigate('/admin')}
@@ -407,118 +422,137 @@ export const LandingScreen = () => {
         )}
       </AnimatePresence>
 
-      {/* Hardware Status Modal */}
+      {/* ADVANCED HARDWARE DASHBOARD */}
       <AnimatePresence>
         {showStatusModal && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-brand-navy/90 backdrop-blur-xl z-[100] flex items-center justify-center p-12"
+            className="fixed inset-0 bg-brand-navy/90 backdrop-blur-2xl z-[150] flex items-center justify-center p-8"
           >
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className={`glass-card w-full max-w-lg p-10 text-center border-l-4 ${isHardwareConnected ? 'border-l-brand-success' : 'border-l-brand-danger'}`}
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="glass-card w-full max-w-2xl overflow-hidden relative shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/10"
             >
-              <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${isHardwareConnected ? 'bg-brand-success/10 text-brand-success' : 'bg-brand-danger/10 text-brand-danger'}`}>
-                <Settings size={40} className={isConnecting ? 'animate-spin' : ''} />
-              </div>
-              <h2 className="text-3xl font-bold mb-4">
-                {isHardwareConnected ? 'Hardware Ready' : 'Hardware Offline'}
-              </h2>
-              <p className="text-text-secondary mb-8">
-                {isHardwareConnected 
-                  ? 'The application is successfully communicating with the Arduino Mega.' 
-                  : 'The application could not detect the Arduino hardware via USB.'}
-              </p>
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-primary animate-gradient-x" />
               
-              {!isHardwareConnected && (
-                <div className="bg-brand-card p-6 rounded-xl text-left border border-white/5 mb-8">
-                  <h3 className="font-bold text-text-primary mb-3 text-sm tracking-widest uppercase">Troubleshooting:</h3>
-                  <p className="text-text-muted text-sm">Ensure the hardware is powered and connected correctly.</p>
-                </div>
-              )}
-
-              {/* Wireless Settings Section */}
-              <div className="bg-brand-card p-6 rounded-xl text-left border border-brand-secondary/20 mb-8">
-                <div className="flex items-center gap-3 mb-6 border-b border-white/5 pb-4">
-                  <Wifi size={20} className="text-brand-secondary" />
-                  <h3 className="font-bold text-text-primary text-sm tracking-widest uppercase">Wireless Configuration</h3>
-                </div>
-                
-                <div className="flex flex-col gap-6">
-                  <div className="flex p-1 bg-brand-navy rounded-lg border border-white/5">
-                    <button 
-                      onClick={() => setCommMode('serial')}
-                      className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-md transition-all ${commMode === 'serial' ? 'bg-brand-primary text-white shadow-lg' : 'text-text-muted hover:text-text-secondary'}`}
-                    >
-                      USB (Serial)
-                    </button>
-                    <button 
-                      onClick={() => setCommMode('wifi')}
-                      className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-md transition-all ${commMode === 'wifi' ? 'bg-brand-secondary text-brand-navy shadow-lg' : 'text-text-muted hover:text-text-secondary'}`}
-                    >
-                      WiFi (Wireless)
-                    </button>
+              <div className="p-10">
+                <div className="flex justify-between items-start mb-10">
+                  <div>
+                    <h2 className="text-3xl font-black text-white mb-2 flex items-center gap-3">
+                      <Cpu className="text-brand-secondary" />
+                      Hardware Control
+                    </h2>
+                    <p className="text-text-muted font-medium">Configure and connect to your H.E.A.L.E.R machine</p>
                   </div>
+                  <button 
+                    onClick={() => setShowStatusModal(false)}
+                    className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center hover:bg-brand-danger/20 hover:text-brand-danger transition-all"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
 
-                  {commMode === 'wifi' && (
-                    <div className="flex flex-col gap-2">
-                      <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">ESP IP Address</label>
-                      <div className="flex gap-2">
-                        <input 
-                          type="text" 
-                          value={espIp}
-                          onChange={(e) => setEspIp(e.target.value)}
-                          placeholder="e.g., 192.168.4.1"
-                          className="flex-1 h-12 bg-brand-navy border border-white/10 rounded-xl px-4 font-mono text-white text-sm focus:outline-none focus:border-brand-secondary"
-                        />
-                        <button 
-                          onClick={handleDiscover}
-                          disabled={isDiscovering}
-                          className="px-4 bg-brand-secondary/20 text-brand-secondary rounded-xl text-[10px] font-bold uppercase tracking-widest border border-brand-secondary/30 hover:bg-brand-secondary/30 transition-all flex items-center gap-2"
-                        >
-                          {isDiscovering ? <Loader2 size={14} className="animate-spin" /> : <Activity size={14} />}
-                          {isDiscovering ? 'Scanning...' : 'Auto-Find'}
-                        </button>
-                      </div>
+                <div className="grid grid-cols-2 gap-6 mb-10">
+                  <button 
+                    onClick={() => setCommMode('serial')}
+                    className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 ${commMode === 'serial' ? 'bg-brand-primary/10 border-brand-primary text-white shadow-[0_0_20px_rgba(33,150,243,0.2)]' : 'bg-white/5 border-transparent text-text-muted hover:border-white/10'}`}
+                  >
+                    <Usb size={32} />
+                    <span className="font-bold tracking-widest uppercase text-xs">USB Serial</span>
+                  </button>
+                  <button 
+                    onClick={() => setCommMode('wifi')}
+                    className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 ${commMode === 'wifi' ? 'bg-brand-secondary/10 border-brand-secondary text-white shadow-[0_0_20px_rgba(0,188,212,0.2)]' : 'bg-white/5 border-transparent text-text-muted hover:border-white/10'}`}
+                  >
+                    <Wifi size={32} />
+                    <span className="font-bold tracking-widest uppercase text-xs">WiFi (ESP32)</span>
+                  </button>
+                </div>
+
+                {commMode === 'wifi' && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="mb-10 p-6 bg-white/5 rounded-2xl border border-white/10"
+                  >
+                    <div className="flex items-center gap-4 mb-4">
+                      <Globe size={20} className="text-brand-secondary" />
+                      <span className="text-xs font-bold uppercase tracking-widest text-text-secondary">Machine Network Address</span>
                     </div>
+                    <div className="flex gap-3">
+                      <input 
+                        type="text"
+                        value={espIp}
+                        onChange={(e) => setEspIp(e.target.value)}
+                        placeholder="e.g. 192.168.1.10 or healer.local"
+                        className="flex-1 h-14 bg-brand-navy/50 border border-white/10 rounded-xl px-5 text-white font-mono focus:border-brand-secondary outline-none transition-all"
+                      />
+                      <button 
+                        onClick={handleHardwareDiscover}
+                        disabled={isScanning}
+                        className="w-14 h-14 bg-brand-secondary text-brand-navy rounded-xl flex items-center justify-center hover:scale-105 transition-transform disabled:opacity-50"
+                      >
+                        {isScanning ? <RefreshCw size={24} className="animate-spin" /> : <Search size={24} />}
+                      </button>
+                    </div>
+                    
+                    {scanResult === 'failed' && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-6 p-5 rounded-xl bg-brand-danger/10 border border-brand-danger/30 text-center"
+                      >
+                        <p className="text-xs text-brand-danger font-black mb-3 uppercase tracking-wider">
+                          Machine Connection Timed Out!
+                        </p>
+                        <p className="text-[10px] text-text-secondary/70 mb-4 leading-relaxed font-medium">
+                          1. Check if Tablet & Machine are on the same WiFi. <br/>
+                          2. Check <b>Serial Monitor</b> in Arduino IDE for the real IP.
+                        </p>
+                        <button 
+                          onClick={handleForceConnect}
+                          className="w-full py-3 rounded-lg border border-brand-danger/50 text-brand-danger text-[10px] font-black uppercase hover:bg-brand-danger hover:text-white transition-all"
+                        >
+                          I'm sure the IP is correct (Force Connect)
+                        </button>
+                      </motion.div>
+                    )}
+                  </motion.div>
+                )}
+
+                <div className="flex gap-4">
+                  {isHardwareConnected ? (
+                    <button 
+                      onClick={disconnectHardware}
+                      className="flex-1 h-16 bg-brand-danger/10 text-brand-danger border border-brand-danger/30 rounded-xl font-black uppercase tracking-[2px] flex items-center justify-center gap-3 hover:bg-brand-danger/20 transition-all"
+                    >
+                      <Power size={20} />
+                      Disconnect
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={handleHardwareConnect}
+                      disabled={isScanning}
+                      className="flex-1 h-16 bg-brand-primary text-white rounded-xl font-black uppercase tracking-[2px] flex items-center justify-center gap-3 shadow-[0_10px_25px_rgba(33,150,243,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+                    >
+                      {isScanning ? <RefreshCw size={24} className="animate-spin" /> : <Signal size={24} />}
+                      {isScanning ? 'Connecting...' : 'Connect Hardware'}
+                    </button>
                   )}
                 </div>
               </div>
 
-              <div className="flex flex-col gap-4">
-                {!isHardwareConnected && (
-                  <motion.button 
-                    whileTap={{ scale: 0.96 }}
-                    disabled={isConnecting}
-                    onClick={handleConnect}
-                    className="w-full py-4 bg-brand-primary text-white rounded-xl font-bold shadow-[0_4px_15px_rgba(33,150,243,0.3)] disabled:opacity-50"
-                  >
-                    {isConnecting ? 'Connecting...' : t('landing.connectBtn')}
-                  </motion.button>
-                )}
-
-                {isHardwareConnected && (
-                  <motion.button 
-                    whileTap={{ scale: 0.96 }}
-                    onClick={disconnectHardware}
-                    className="w-full py-4 bg-brand-danger/10 hover:bg-brand-danger/20 text-brand-danger rounded-xl font-bold transition-all border border-brand-danger/20 flex items-center justify-center gap-3"
-                  >
-                    <PowerOff size={20} />
-                    Disconnect Hardware
-                  </motion.button>
-                )}
-                
-                <motion.button 
-                  whileTap={{ scale: 0.96 }}
-                  onClick={() => setShowStatusModal(false)}
-                  className="w-full py-4 bg-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.15)] text-text-primary rounded-xl font-bold transition-colors"
-                >
-                  Close
-                </motion.button>
+              {/* Status Footer */}
+              <div className="bg-white/5 p-6 flex items-center justify-between border-t border-white/5">
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${isHardwareConnected ? 'bg-brand-success animate-pulse' : 'bg-brand-danger'}`} />
+                  <span className="text-[10px] font-black uppercase tracking-[2px] text-text-muted">System Status: {isHardwareConnected ? 'READY' : 'WAITING'}</span>
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-[2px] text-text-muted">H.E.A.L.E.R v3.0</span>
               </div>
             </motion.div>
           </motion.div>

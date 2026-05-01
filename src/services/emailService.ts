@@ -1,29 +1,12 @@
 import { getAllSettings } from './settingsService';
 
-export const sendEmail = async (payload: { to: string; cc?: string; subject: string; body: string; attachments?: any[] }) => {
-  try {
-    const response = await fetch('/api/send-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const result = await response.json();
-    
-    if (!result.success) {
-      // Log failure to admin
-      await fetch('/api/logs/admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: `Email sending failed to ${payload.to}: ${result.error}` })
-      });
-      throw new Error(result.error);
-    }
-    
-    return result;
-  } catch (err: any) {
-    console.error("Email service error:", err);
-    throw err;
-  }
+export const sendEmail = async (payload: { to: string; cc?: string; subject: string; body: string; attachments?: any[] }): Promise<{ success: boolean; messageId?: string; error?: string }> => {
+  // Email requires an active internet connection.
+  // nodemailer is not available in the browser/Capacitor environment.
+  // To enable email, integrate a REST-based email API such as EmailJS, SendGrid, or Resend here.
+  // For now this function logs the attempt and returns a graceful failure so the app does not crash.
+  console.warn('Email sending is not available offline. Attempted to send to:', payload.to, 'Subject:', payload.subject);
+  return { success: false, error: 'Email service not configured for offline mode.' };
 };
 
 const getConfidenceLabel = (score: number) => {

@@ -24,8 +24,15 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { sendPrescriptionEmail, sendAutoReferralEmail } from '../services/emailService';
-import { db } from '../utils/db';
-import { useLiveQuery } from 'dexie-react-hooks';
+import {
+  getPrescriptionsBySession,
+  getInventory,
+  getAllSettings,
+  getDiseaseMap,
+  checkDispensed,
+  addUnavailabilityLog,
+  addAdminLog,
+} from '../services/dbService';
 
 export const PrescriptionScreen = () => {
   const { t, currentPatient, currentSession, setCurrentPatient, setCurrentSession } = useAppContext();
@@ -40,33 +47,48 @@ export const PrescriptionScreen = () => {
 
   const fetchData = async () => {
     try {
-      // Get all local data
-      const [prescData, invData, setData] = await Promise.all([
-        db.prescriptions.where('session_id').equals(currentSession.id).toArray(),
-        db.inventory.toArray(),
-        db.settings.toArray()
+      const [prescData, invData, setData, mapData] = await Promise.all([
+        getPrescriptionsBySession(currentSession.id),
+        getInventory(),
+        getAllSettings(),
+        getDiseaseMap(currentSession.diagnosed_disease)
       ]);
 
-      const settingsMap = setData.reduce((acc: any, s) => ({ ...acc, [s.key]: s.value }), {});
-      
       setPrescriptions(prescData);
       setInventory(invData);
-      setSettings(settingsMap);
+      setSettings(setData);
+      setDiseaseMap(mapData);
 
-      // Check which items are dispensed locally
+      // Check which items are dispensed
       const dispensedMap: Record<string, boolean> = {};
-      
-      // We can check local logs or a dispensed field (simplified for now)
-      prescData.forEach((p: any) => {
-        dispensedMap[p.medicine_name] = false; // Will be updated by Dispense screen
-      });
+      await Promise.all(prescData.map(async (p: any) => {
+        const dispensed = await checkDispensed(currentSession.id, p.medicine_name);
+        dispensedMap[p.medicine_name] = dispensed;
+
+        // Unavailability logging
+        if (!dispensed) {
+          const invItem = invData.find((i: any) => i.compartment_number === p.compartment_number);
+          const isDispensable = p.compartment_number > 0 && mapData?.is_dispensable === 1;
+          const outOfStock = invItem ? invItem.current_count <= 0 : true;
+
+          if (!isDispensable || outOfStock) {
+             await addUnavailabilityLog(
+               currentSession.id,
+               currentPatient?.id,
+               p.medicine_name,
+               p.compartment_number,
+               !isDispensable ? 'manual_pharmacy' : 'out_of_stock'
+             ).catch(() => {});
+          }
+        }
+      }));
       setDispensedItems(dispensedMap);
 
       if (currentSession.action_taken === 'auto_referred') {
-        handleAutoReferral(settingsMap, prescData);
+        handleAutoReferral(setData, prescData);
       }
     } catch (err) {
-      console.error("Failed to fetch local prescription details", err);
+      console.error("Failed to fetch prescription details", err);
     } finally {
       setLoading(false);
     }
@@ -83,17 +105,15 @@ export const PrescriptionScreen = () => {
   const handleAutoReferral = async (currentSettings: any, prescList: any[]) => {
     const message = `Auto-referral sent for patient ${currentPatient?.name}, disease ${currentSession?.diagnosed_disease}, session ${currentSession?.id}`;
     
-    await db.logs.add({
-      timestamp: new Date().toISOString(),
-      type: 'admin',
-      message
-    });
+    await addAdminLog(message);
 
-    await db.logs.add({
-      timestamp: new Date().toISOString(),
-      type: 'error',
-      message: `Serious Referral: ${currentSession?.diagnosed_disease} for ${currentPatient?.name}`
-    });
+    await addUnavailabilityLog(
+      currentSession?.id,
+      currentPatient?.id,
+      "Doctor Referral",
+      null,
+      'serious_referred'
+    );
 
     try {
       await sendAutoReferralEmail(currentPatient, currentSession, prescList);
@@ -116,11 +136,7 @@ export const PrescriptionScreen = () => {
     const whatsappUrl = `whatsapp://send?phone=${phone}`;
     window.location.href = whatsappUrl;
     
-    db.logs.add({ 
-      timestamp: new Date().toISOString(),
-      type: 'admin',
-      message: `Patient ${currentPatient?.name} initiated doctor call, session ${currentSession?.id}` 
-    });
+    addAdminLog(`Patient ${currentPatient?.name} initiated doctor call, session ${currentSession?.id}`);
   };
 
   const handleDone = () => {
@@ -130,8 +146,8 @@ export const PrescriptionScreen = () => {
   };
 
   const handleDispense = (p: any) => {
-    const invItem = inventory.find(i => i.slot === p.compartment_number);
-    if (!invItem || invItem.count <= 0) return;
+    const invItem = inventory.find(i => i.compartment_number === p.compartment_number);
+    if (!invItem || invItem.current_count <= 0) return;
 
     navigate('/dispensing', { 
       state: { 
@@ -282,10 +298,10 @@ export const PrescriptionScreen = () => {
 
             <div className="flex-1 overflow-y-auto flex flex-col gap-4 pr-2">
               {prescriptions.length > 0 ? prescriptions.map((p, i) => {
-                const invItem = inventory.find(inv => inv.slot === p.compartment_number);
-                const outOfStock = invItem ? invItem.count <= 0 : true;
-                const isDispensable = p.compartment_number > 0; // Simplified for offline
-                const isSerious = currentSession?.action_taken === 'serious_referred';
+                const invItem = inventory.find(inv => inv.compartment_number === p.compartment_number);
+                const outOfStock = invItem ? invItem.current_count <= 0 : true;
+                const isDispensable = p.compartment_number > 0 && diseaseMap?.is_dispensable === 1;
+                const isSerious = diseaseMap?.is_serious === 1 || currentSession?.action_taken === 'serious_referred';
                 const dispensed = p.is_dispensed === 1 || dispensedItems[p.medicine_name];
 
                 return (

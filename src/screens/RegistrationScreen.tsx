@@ -7,7 +7,7 @@ import { QRCodeDisplay } from '../utils/qrUtils';
 import { sendQRCodeEmail } from '../services/emailService';
 import { getAllSettings } from '../services/settingsService';
 import { motion, AnimatePresence } from 'motion/react';
-import { db } from '../utils/db';
+import { registerPatient, updatePatientQR } from '../services/dbService';
 
 export const RegistrationScreen = () => {
   const { t, language, setCurrentPatient } = useAppContext();
@@ -75,25 +75,24 @@ export const RegistrationScreen = () => {
 
     try {
       const { confirmPassword, ...submitData } = formData;
-      
-      // Save to local IndexedDB
-      const patientId = await db.patients.add({
+      // Initialize with empty QR code and current timestamp
+      const newPatient = await registerPatient({
         ...submitData,
-        age: parseInt(formData.age),
-        lastVisit: new Date().toISOString(),
-        phone: formData.email // Using email as unique ID for now
+        age: parseInt(submitData.age),
+        qr_code: '',
+        created_at: new Date().toISOString()
       });
 
-      const qrCode = `HEALER_PATIENT_${patientId}`;
-      
-      // Update with QR code
-      await db.patients.update(patientId, { id: patientId }); // Ensure ID is part of record
-      
-      const patient = { ...submitData, id: patientId, qr_code: qrCode };
-      setRegisteredPatient(patient);
-      setCurrentPatient(patient);
-      setShowQRModal(true);
+      if (newPatient && newPatient.id) {
+        const qrCode = `HEALER_PATIENT_${newPatient.id}`;
+        const updatedPatient = await updatePatientQR(newPatient.id, qrCode);
 
+        if (updatedPatient) {
+          setRegisteredPatient(updatedPatient);
+          setCurrentPatient(updatedPatient);
+          setShowQRModal(true);
+        }
+      }
     } catch (err) {
       console.error("Registration failed", err);
     }

@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.healer.app',
+  appId: 'com.healer.clinic',
   appName: 'HEALER',
   webDir: 'dist'
 };

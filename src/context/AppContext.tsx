@@ -39,24 +39,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Auto-reconnect on mount
   useEffect(() => {
     const attemptAutoConnect = async () => {
-      const res = await initSerial(true);
-      if (res.success) {
-        onMessage((msg) => {
-          if (msg.trim() === 'ARDUINO_READY') {
-            setIsHardwareConnected(true);
-          }
-        });
+      // MANDATORY: Sync initial state to driver before any connection attempt
+      setCommunicationMode(commMode, espIp);
+
+      if (commMode === 'serial') {
+        const res = await initSerial(true);
+        if (res.success) {
+          onMessage((msg) => {
+            if (msg.trim() === 'ARDUINO_READY') {
+              setIsHardwareConnected(true);
+            }
+          });
+        }
+      } else {
+        const isOk = await checkWiFiConnection();
+        if (isOk) setIsHardwareConnected(true);
       }
     };
     attemptAutoConnect();
   }, []);
 
-  // Sync Communication Mode and IP to the utility and localStorage
+  // Sync state changes and persist (Debounced for IP typing)
   useEffect(() => {
-    setCommunicationMode(commMode, espIp);
+    const timer = setTimeout(() => {
+      setCommunicationMode(commMode, espIp);
+    }, 500);
+
     localStorage.setItem('healer_comm_mode', commMode);
     localStorage.setItem('healer_esp_ip', espIp);
     localStorage.setItem('healer_lang', language);
+
+    return () => clearTimeout(timer);
   }, [commMode, espIp, language]);
 
   const connectHardware = async () => {
