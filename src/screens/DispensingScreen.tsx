@@ -49,6 +49,9 @@ export const DispensingScreen = () => {
         setHardwareError(true);
       }
 
+      // Check if still mounted after async init
+      if (timerRef.current === undefined) return; 
+
       // 2. Register listener
       onMessage((msg) => {
         addAdminLog(`SERIAL ACK: ${msg}`).catch(() => {});
@@ -62,11 +65,15 @@ export const DispensingScreen = () => {
       }
       await sendCommand(`CAM_ON`);
 
+      // Check if still mounted after commands
+      if (timerRef.current === undefined) return;
+
       // 4. Start Timer
+      if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
-            clearInterval(timerRef.current!);
+            if (timerRef.current) clearInterval(timerRef.current);
             handleComplete();
             return 0;
           }
@@ -78,7 +85,10 @@ export const DispensingScreen = () => {
     startFlow();
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = undefined; // Mark as unmounted
+      }
       closeSerial();
     };
   }, []);

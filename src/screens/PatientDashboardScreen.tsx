@@ -18,6 +18,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeDisplay } from '../utils/qrUtils';
 import { sendQRCodeEmail } from '../services/emailService';
+import { getPatientFullHistory } from '../services/dbService';
 import QRCode from 'qrcode';
 
 export const PatientDashboardScreen = () => {
@@ -34,8 +35,7 @@ export const PatientDashboardScreen = () => {
 
     const fetchHistory = async () => {
       try {
-        const response = await fetch(`/api/admin/patients/${currentPatient.id}/full`);
-        const data = await response.json();
+        const data = await getPatientFullHistory(currentPatient.id!);
         setSessions(data.sessions || []);
       } catch (err) {
         console.error("Failed to fetch visit history", err);
