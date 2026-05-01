@@ -109,7 +109,7 @@ npm run dev
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-Developed with ❤️ by **[Madhur Mishra](https://github.com/Madhurmishrax)** and **[Nikhil Kumar Yadav](https://github.com/NikhilKY64)**.
+Developed with ❤️ by **[Madhur Mishra](https://github.com/Madhurmishrax)** & **[Nikhil Kumar Yadav](https://github.com/NikhilKY64)**.
 
 ---
 Developed with a focus on medical integrity and high-availability kiosk deployment.
