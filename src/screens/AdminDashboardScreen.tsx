@@ -37,31 +37,44 @@ import { getAllSettings, setSetting } from '../services/settingsService';
 import { sendCommand, onMessage } from '../utils/serialComm';
 import { sendQRCodeEmail } from '../services/emailService';
 import QRCode from 'qrcode';
+import { db } from '../utils/db';
+import { useLiveQuery } from 'dexie-react-hooks';
 
 // --- Tab Sub-Components ---
 
 const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: any) => {
   const { t } = useAppContext();
-  const [statuses, setStatuses] = useState<Record<string, string>>({ 1: 'Closed', 2: 'Closed', 3: 'Closed', 4: 'Closed', 'FA': 'Closed' });
+  const [statuses, setStatuses] = useState<Record<string | number, string>>({ 1: 'Closed', 2: 'Closed', 3: 'Closed', 4: 'Closed', 'FA': 'Closed' });
   const [debugOpen, setDebugOpen] = useState(false);
   const [testCmd, setTestCmd] = useState('');
 
   useEffect(() => {
-    onMessage((msg) => {
+    const unsubscribe = onMessage((msg) => {
       const timestamp = new Date().toLocaleTimeString();
       setSerialLog((prev: any) => [{ timestamp, type: 'IN', msg }, ...prev].slice(0, 20));
       
-      if (msg.includes('ACK_OPEN')) {
+      if (msg.startsWith('ACK_OPEN')) {
         const parts = msg.split('_');
-        const key = parts[2] === 'FA' ? 'FA' : parseInt(parts[2]);
-        setStatuses(prev => ({ ...prev, [key]: 'Open' }));
+        const lastPart = parts[parts.length - 1];
+        if (lastPart === 'FA') {
+          setStatuses(prev => ({ ...prev, 'FA': 'Open' }));
+        } else {
+          const num = parseInt(lastPart);
+          if (!isNaN(num)) setStatuses(prev => ({ ...prev, [num]: 'Open' }));
+        }
       }
-      if (msg.includes('ACK_CLOSE')) {
+      if (msg.startsWith('ACK_CLOSE')) {
         const parts = msg.split('_');
-        const key = parts[2] === 'FA' ? 'FA' : parseInt(parts[2]);
-        setStatuses(prev => ({ ...prev, [key]: 'Closed' }));
+        const lastPart = parts[parts.length - 1];
+        if (lastPart === 'FA') {
+          setStatuses(prev => ({ ...prev, 'FA': 'Closed' }));
+        } else {
+          const num = parseInt(lastPart);
+          if (!isNaN(num)) setStatuses(prev => ({ ...prev, [num]: 'Closed' }));
+        }
       }
     });
+    return () => unsubscribe();
   }, []);
 
   const handleOpen = (n: number) => {
@@ -83,10 +96,10 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
       handleOpen(i);
       await new Promise(r => setTimeout(r, 200));
     }
-    fetch('/api/logs/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: "Admin opened all compartments for refill" })
+    db.logs.add({
+      timestamp: new Date().toISOString(),
+      type: 'admin',
+      message: "Admin opened all compartments for refill"
     });
   };
 
@@ -96,10 +109,10 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
       await new Promise(r => setTimeout(r, 200));
     }
     handleCloseFA();
-    fetch('/api/logs/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: "Admin closed all compartments" })
+    db.logs.add({
+      timestamp: new Date().toISOString(),
+      type: 'admin',
+      message: "Admin closed all compartments"
     });
   };
 
@@ -123,9 +136,9 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
     <div className="flex-1 flex flex-col gap-8 overflow-y-auto pr-2 pb-8">
       <div className="grid grid-cols-2 gap-8">
         {[1, 2, 3, 4].map(n => {
-          const inv = inventory.find((i: any) => i.compartment_number === n);
+          const inv = inventory.find((i: any) => i.slot === n);
           const isOpen = statuses[n] === 'Open';
-          const isLowStock = inv && inv.current_count <= 5;
+          const isLowStock = inv && inv.count <= 5;
           
           let borderColor = 'border-t-brand-success';
           if (isOpen) borderColor = 'border-t-brand-danger';
@@ -147,7 +160,7 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-bold text-text-muted uppercase tracking-widest">Stock:</span>
                     <span className={`text-xl font-mono font-bold ${isLowStock ? 'text-brand-warning' : 'text-text-primary'}`}>
-                      {inv?.current_count || 0}
+                      {inv?.count || 0}
                     </span>
                   </div>
                 </div>
@@ -299,32 +312,26 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
   );
 };
 
-const InventoryTab = ({ inventory, refreshInventory }: any) => {
+const InventoryTab = ({ inventory }: any) => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState<any>({});
-  const [unavailLogs, setUnavailLogs] = useState([]);
+  const unavailLogs = useLiveQuery(() => db.logs.where('type').equals('error').toArray()) || [];
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    fetch('/api/admin/unavailability-log')
-      .then(res => res.json())
-      .then(setUnavailLogs);
-  }, []);
 
   const handleSave = async (n: number) => {
     setLoading(true);
-    const item = formData[n] || inventory.find((i: any) => i.compartment_number === n);
+    const item = formData[n] || inventory.find((i: any) => i.slot === n);
     
-    await fetch('/api/admin/inventory/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(item)
-    });
+    if (item.id) {
+      await db.inventory.update(item.id, item);
+    } else {
+      await db.inventory.add(item);
+    }
 
-    await fetch('/api/logs/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: `Admin updated inventory: compartment ${n} set to ${item.current_count} units` })
+    await db.logs.add({
+      timestamp: new Date().toISOString(),
+      type: 'admin',
+      message: `Admin updated inventory: compartment ${n} set to ${item.count} units`
     });
 
     setEditingId(null);
@@ -332,7 +339,6 @@ const InventoryTab = ({ inventory, refreshInventory }: any) => {
       const { [n]: _, ...rest } = prev;
       return rest;
     });
-    refreshInventory();
     setLoading(false);
   };
 
@@ -341,19 +347,19 @@ const InventoryTab = ({ inventory, refreshInventory }: any) => {
   return (
     <div className="flex-1 flex flex-col gap-8 overflow-y-auto pr-2 pb-8">
       
-      {inventory.some((i: any) => i.current_count <= lowStockThreshold) && (
+      {inventory.some((i: any) => i.count <= lowStockThreshold) && (
         <div className="bg-[rgba(255,179,0,0.1)] p-6 rounded-2xl border border-brand-warning/30 flex items-center gap-6">
           <AlertCircle className="text-brand-warning" size={32} />
           <p className="text-brand-warning font-bold text-sm tracking-widest uppercase">
-            Low Stock Warning: Compartments {inventory.filter((i: any) => i.current_count <= lowStockThreshold).map((i: any) => i.compartment_number).join(', ')} are running low!
+            Low Stock Warning: Compartments {inventory.filter((i: any) => i.count <= lowStockThreshold).map((i: any) => i.slot).join(', ')} are running low!
           </p>
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-8">
         {[1, 2, 3, 4].map(n => {
-          const inv = inventory.find((i: any) => i.compartment_number === n);
-          const currentData = formData[n] || inv || { compartment_number: n, medicine_name: '', current_count: 0 };
+          const inv = inventory.find((i: any) => i.slot === n);
+          const currentData = formData[n] || inv || { slot: n, name: '', count: 0 };
           const isEditing = editingId === n;
 
           return (
@@ -365,13 +371,13 @@ const InventoryTab = ({ inventory, refreshInventory }: any) => {
                 {isEditing ? (
                   <input 
                     type="text" 
-                    value={currentData.medicine_name}
-                    onChange={(e) => setFormData({ ...formData, [n]: { ...currentData, medicine_name: e.target.value } })}
+                    value={currentData.name}
+                    onChange={(e) => setFormData({ ...formData, [n]: { ...currentData, name: e.target.value } })}
                     className="w-full h-12 bg-brand-navy border border-brand-secondary/30 rounded-xl px-4 font-bold text-white focus:outline-none focus:border-brand-secondary"
                   />
                 ) : (
                   <h3 className="text-2xl font-bold text-white cursor-pointer hover:text-brand-secondary transition-colors" onClick={() => setEditingId(n)}>
-                    {inv?.medicine_name || 'Tap to assign'}
+                    {inv?.name || 'Tap to assign'}
                   </h3>
                 )}
               </div>
@@ -383,24 +389,24 @@ const InventoryTab = ({ inventory, refreshInventory }: any) => {
                     <div className="flex items-center gap-3">
                       <motion.button 
                         whileTap={{ scale: 0.9 }}
-                        onClick={() => setFormData({ ...formData, [n]: { ...currentData, current_count: Math.max(0, currentData.current_count - 1) } })}
+                        onClick={() => setFormData({ ...formData, [n]: { ...currentData, count: Math.max(0, currentData.count - 1) } })}
                         className="w-12 h-12 bg-brand-navy border border-white/10 rounded-xl flex items-center justify-center text-text-primary hover:bg-white/5"
                       ><Minus size={20} /></motion.button>
                       <input 
                         type="number" 
-                        value={currentData.current_count}
-                        onChange={(e) => setFormData({ ...formData, [n]: { ...currentData, current_count: parseInt(e.target.value) || 0 } })}
+                        value={currentData.count}
+                        onChange={(e) => setFormData({ ...formData, [n]: { ...currentData, count: parseInt(e.target.value) || 0 } })}
                         className="w-20 h-12 bg-brand-navy border border-brand-secondary/30 rounded-xl px-2 text-center font-mono font-bold text-white focus:outline-none"
                       />
                       <motion.button 
                         whileTap={{ scale: 0.9 }}
-                        onClick={() => setFormData({ ...formData, [n]: { ...currentData, current_count: currentData.current_count + 1 } })}
+                        onClick={() => setFormData({ ...formData, [n]: { ...currentData, count: currentData.count + 1 } })}
                         className="w-12 h-12 bg-brand-navy border border-white/10 rounded-xl flex items-center justify-center text-text-primary hover:bg-white/5"
                       ><Plus size={20} /></motion.button>
                     </div>
                   ) : (
-                    <div className={`text-4xl font-mono font-bold ${inv?.current_count <= lowStockThreshold ? 'text-brand-warning' : 'text-brand-secondary'}`}>
-                      {inv?.current_count || 0}
+                    <div className={`text-4xl font-mono font-bold ${inv?.count <= lowStockThreshold ? 'text-brand-warning' : 'text-brand-secondary'}`}>
+                      {inv?.count || 0}
                     </div>
                   )}
                 </div>
@@ -468,22 +474,32 @@ const InventoryTab = ({ inventory, refreshInventory }: any) => {
   );
 };
 
+const formatSafeDate = (dateStr: string) => {
+  if (!dateStr) return 'No Date';
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? 'Invalid Date' : d.toLocaleDateString();
+};
+
+const formatSafeTime = (dateStr: string) => {
+  if (!dateStr) return '--:--';
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? '--:--' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+};
+
 const PatientsTab = () => {
-  const [patients, setPatients] = useState([]);
+  const patients = useLiveQuery(() => db.patients.toArray()) || [];
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [expandedSession, setExpandedSession] = useState<number | null>(null);
 
-  useEffect(() => {
-    fetch('/api/admin/patients').then(res => res.json()).then(setPatients);
-  }, []);
-
   const selectPatient = async (id: number) => {
     setLoading(true);
-    const res = await fetch(`/api/admin/patients/${id}/full`);
-    const data = await res.json();
-    setSelectedPatient(data);
+    // In offline mode, sessions are part of the patient record or separate table
+    // For now, let's assume we fetch them from a sessions table if we had one
+    // But since we are migrating, let's just use the selected patient
+    const p = await db.patients.get(id);
+    setSelectedPatient({ ...p, sessions: [] }); // Sessions migration coming next
     setLoading(false);
     setExpandedSession(null);
   };
@@ -529,7 +545,7 @@ const PatientsTab = () => {
                 <p className={`font-bold ${selectedPatient?.id === p.id ? 'text-white' : 'text-text-primary'}`}>{p.name}</p>
                 <div className="flex justify-between text-[10px] font-bold text-text-muted uppercase tracking-[0.1em] mt-1">
                   <span>{p.age} Y • {p.gender}</span>
-                  <span>{new Date(p.created_at).toLocaleDateString()}</span>
+                  <span>{formatSafeDate(p.created_at)}</span>
                 </div>
               </div>
             </button>
@@ -579,8 +595,8 @@ const PatientsTab = () => {
                   >
                     <div className="flex items-center gap-8 text-left">
                       <div className="min-w-[100px] border-r border-white/10 pr-6">
-                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">{new Date(s.timestamp).toLocaleDateString()}</p>
-                        <p className="text-xl font-mono font-bold text-white">{new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">{formatSafeDate(s.timestamp)}</p>
+                        <p className="text-xl font-mono font-bold text-white">{formatSafeTime(s.timestamp)}</p>
                       </div>
                       <div>
                         <h4 className="text-xl font-bold text-brand-secondary mb-1">{s.diagnosed_disease}</h4>
@@ -757,7 +773,7 @@ const SettingsTab = () => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   useEffect(() => {
-    fetch('/api/settings').then(res => res.json()).then(setFormData);
+    getAllSettings().then(setFormData);
   }, []);
 
   const handleSave = async () => {
@@ -833,23 +849,16 @@ const SettingsTab = () => {
 
 export const AdminDashboardScreen = () => {
   const navigate = useNavigate();
+  const { isHardwareConnected, connectHardware } = useAppContext();
   const [activeTab, setActiveTab] = useState<'compartments'|'inventory'|'patients'|'analytics'|'settings'>('compartments');
-  const [inventory, setInventory] = useState([]);
+  const inventory = useLiveQuery(() => db.inventory.toArray()) || [];
   const [serialLog, setSerialLog] = useState<{ timestamp: string; type: 'IN' | 'OUT'; msg: string }[]>([]);
 
-  const refreshInventory = () => {
-    fetch('/api/inventory').then(res => res.json()).then(setInventory);
-  };
-
-  useEffect(() => {
-    refreshInventory();
-  }, []);
-
   const handleLogout = () => {
-    fetch('/api/logs/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: `Admin logout [${new Date().toISOString()}]` })
+    db.logs.add({
+      timestamp: new Date().toISOString(),
+      type: 'admin',
+      message: `Admin logout`
     });
     navigate('/');
   };
@@ -877,14 +886,29 @@ export const AdminDashboardScreen = () => {
           </div>
         </div>
         
-        <motion.button 
-          whileTap={{ scale: 0.95 }}
-          onClick={handleLogout}
-          className="h-12 px-6 bg-[rgba(255,82,82,0.1)] hover:bg-[rgba(255,82,82,0.2)] text-brand-danger border border-brand-danger/30 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-all"
-        >
-          <LogOut size={16} />
-          Logout
-        </motion.button>
+        <div className="flex items-center gap-4">
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={connectHardware}
+            className={`h-12 px-6 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-3 transition-all border ${
+              isHardwareConnected 
+                ? 'bg-[rgba(0,230,118,0.1)] text-brand-success border-brand-success/30' 
+                : 'bg-[rgba(255,179,0,0.1)] text-brand-warning border-brand-warning/30 animate-pulse'
+            }`}
+          >
+            <Activity size={18} className={isHardwareConnected ? '' : 'animate-pulse'} />
+            {isHardwareConnected ? 'Hardware Online' : 'Connect Hardware'}
+          </motion.button>
+
+          <motion.button 
+            whileTap={{ scale: 0.95 }}
+            onClick={handleLogout}
+            className="h-12 px-6 bg-[rgba(255,82,82,0.1)] hover:bg-[rgba(255,82,82,0.2)] text-brand-danger border border-brand-danger/30 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-all"
+          >
+            <LogOut size={16} />
+            Logout
+          </motion.button>
+        </div>
       </div>
 
       {/* Tab Navigation */}
@@ -927,7 +951,6 @@ export const AdminDashboardScreen = () => {
             {activeTab === 'compartments' && (
               <CompartmentsTab 
                 inventory={inventory} 
-                setInventory={setInventory} 
                 serialLog={serialLog} 
                 setSerialLog={setSerialLog} 
               />
@@ -935,7 +958,6 @@ export const AdminDashboardScreen = () => {
             {activeTab === 'inventory' && (
               <InventoryTab 
                 inventory={inventory} 
-                refreshInventory={refreshInventory} 
               />
             )}
             {activeTab === 'patients' && <PatientsTab />}
