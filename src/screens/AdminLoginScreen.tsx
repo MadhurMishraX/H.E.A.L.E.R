@@ -16,7 +16,7 @@ import { initSerial, onMessage, closeSerial } from '../utils/serialComm';
 import { getAllSettings } from '../services/settingsService';
 
 export const AdminLoginScreen = () => {
-  const { t, isHardwareConnected, connectHardware } = useAppContext();
+  const { t } = useAppContext();
   const navigate = useNavigate();
 
   const [step, setStep] = useState<'rfid' | 'pin'>('rfid');
@@ -31,21 +31,15 @@ export const AdminLoginScreen = () => {
   const lockoutIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
-
     const setup = async () => {
       // Get admin pin from settings
       const settings = await getAllSettings();
       setAdminPin(settings.admin_pin || '1234');
 
-      // Ensure connected
-      if (!isHardwareConnected) {
-        await connectHardware();
-      }
-
-      // Listen for RFID
-      unsubscribe = onMessage((msg) => {
-        if (msg.trim().startsWith('RFID_DETECTED') && step === 'rfid') {
+      // Init serial and listen for RFID
+      await initSerial();
+      onMessage((msg) => {
+        if (msg.trim() === 'RFID_DETECTED' && step === 'rfid') {
           handleRfidSuccess();
         }
       });
@@ -59,10 +53,9 @@ export const AdminLoginScreen = () => {
     return () => {
       if (rfidTimeoutRef.current) clearTimeout(rfidTimeoutRef.current);
       if (lockoutIntervalRef.current) clearInterval(lockoutIntervalRef.current);
-      if (unsubscribe) unsubscribe();
-      // REMOVED: closeSerial();
+      closeSerial();
     };
-  }, [isHardwareConnected, connectHardware, step]);
+  }, []);
 
   const startRfidTimeout = () => {
     if (rfidTimeoutRef.current) clearTimeout(rfidTimeoutRef.current);
@@ -215,13 +208,13 @@ export const AdminLoginScreen = () => {
                 </motion.button>
               )}
 
-              {/* Simulation Helper - Enabled for Vercel Testing */}
-              {rfidStatus === 'pending' && (
+              {/* Simulation Helper */}
+              {process.env.NODE_ENV === 'development' && rfidStatus === 'pending' && (
                 <button 
                   onClick={handleRfidSuccess}
-                  className="mt-8 text-white/30 text-[10px] uppercase tracking-widest font-bold hover:text-brand-secondary transition-colors"
+                  className="mt-8 text-white/20 text-xs uppercase tracking-widest font-bold hover:text-white transition-colors"
                 >
-                  [ TEST MODE: Simulate RFID Tap ]
+                  [ Simulate RFID Tap ]
                 </button>
               )}
             </motion.div>

@@ -131,43 +131,50 @@ export async function initDatabase() {
   }
 
   // Pre-insert disease_compartment_map if empty
-  const diseaseCount = await db.get('SELECT COUNT(*) as count FROM disease_compartment_map');
-    if (diseaseCount.count <= 18) { // Allow updating if we have the old list or less
-      await db.run('DELETE FROM disease_compartment_map'); // Clear to overwrite with new 15
-      const initialDiseases = [
-        ['Fever/Flu', 1, 1, 0, 'Paracetamol 500mg', '1 tablet 3 times a day', 'Half tablet 2 times a day', '1 tablet 3 times a day', 'Maintain hydration. If fever above 102°F or persists 3+ days, visit hospital.'],
-        ['Gastroenteritis', 2, 1, 0, 'ORS Sachet', '1 sachet in 1 litre water', '200ml after each motion', 'Sip throughput the day', 'Avoid dairy and spicy food. BRAT diet recommended.'],
-        ['Allergic Rhinitis', 3, 1, 0, 'Cetirizine 10mg', '1 tablet at bedtime', 'Half tablet at bedtime', '1 tablet at bedtime', 'Identify and avoid allergens. May cause drowsiness.'],
-        ['Fungal Skin Infection', 4, 1, 0, 'Fluconazole 150mg', '1 tablet once a week', 'Consult pediatrician', '1 tablet once a week', 'Keep area dry. Wear cotton. Do not share towels.'],
-        ['Common Cold/URI', null, 0, 0, 'Vitamin C + Zinc tablet', '1 tablet daily', 'Consult for syrup', '1 tablet daily', 'Steam inhalation 2-3 times daily. Warm saline gargles.'],
-        ['Conjunctivitis', null, 0, 0, 'Chloramphenicol Eye Drops', '1 drop 4 times a day', '1 drop twice a day', '1 drop 4 times a day', 'Do not touch or rub eyes. Use separate towels.'],
-        ['Migraine/Tension Headache', null, 0, 0, 'Naproxen 250mg', '1 tablet twice a day after food', 'Do not give without doctor consultation', '1 tablet daily', 'Rest in quiet dark room. Avoid caffeine triggers.'],
-        ['Minor Wound/Infection', null, 0, 0, 'Povidone-Iodine Ointment', 'Apply twice daily', 'Apply twice daily', 'Apply twice daily', 'Clean with sterile water before applying. Keep covered.'],
-        ['Hypertension', null, 0, 1, 'URGENT MONITORING REQUIRED', 'Immediate BP check', 'N/A', 'Immediate BP check', 'Reduce stress. Consult a doctor immediately.'],
-        ['Acidity/GERD', null, 0, 0, 'Pantoprazole 40mg', '1 tablet daily on empty stomach', 'N/A — consult doctor', '1 tablet daily', 'Avoid lying down 2 hours after meals.'],
-        ['Acute Bronchitis', null, 0, 0, 'Guaifenesin Syrup', '10ml three times a day', '5ml twice a day — consult doctor', '10ml three times a day', 'Drink warm fluids. Avoid dust and smoke.'],
-        ['Muscle Strain/Sprain', null, 0, 0, 'Etoricoxib 90mg', '1 tablet daily for 3 days', 'Topical gel only', '1 tablet daily', 'RICE therapy: Rest, Ice, Compression, Elevation.'],
-        ['Urinary Tract Infection', null, 0, 0, 'Nitrofurantoin 100mg', '1 tablet twice a day for 5 days', 'N/A — consult doctor', '1 tablet twice a day', 'Drink 3-4 litres water daily. Do not delay urination.'],
-        ['Asthma/Wheezing', null, 0, 0, 'Salbutamol Inhaler', '2 puffs every 4-6 hours', '1 puff — consult doctor', '2 puffs every 4-6 hours', 'Avoid triggers. Keep inhaler accessible always.'],
-        ['Severe Infection/Sepsis', null, 0, 1, 'EMERGENCY REFERRAL', 'Go to nearest hospital immediately', 'Go to nearest hospital immediately', 'Go to nearest hospital immediately', 'GO TO THE NEAREST HOSPITAL IMMEDIATELY.'],
-        ['Inconclusive — Doctor Referral Required', null, 0, 1, 'Clinical Examination Required', 'Professional Consult Required', 'Pedaetric Consult', 'Geriatric Consult', 'Symptoms do not match simple algorithm. Requires professional physical exam.']
-      ];
-      
-      for (const [name, comp, disp, serious, med, adult, child, elderly, adv] of initialDiseases) {
-        await db.run(
-          'INSERT INTO disease_compartment_map (disease_name, compartment_number, is_dispensable, is_serious, medicine_name, dosage_adult, dosage_child, dosage_elderly, advice) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [name, comp, disp, serious, med, adult, child, elderly, adv]
-        );
-      }
-    }
+  await db.run('DELETE FROM disease_compartment_map'); // Always reset to new 16 for this overhaul
+  const initialDiseases = [
+    // Track A & B
+    ['FLU', 1, 1, 0, 'Paracetamol', '1 tablet every 6–8 hours', '5–10ml every 6 hours', '1 tablet every 8 hours', 'Rest. Take Sinarest for nose / Ascoril for cough.'],
+    ['VIRAL FEVER', 1, 1, 0, 'Paracetamol', '1 tablet every 6–8 hours', '5–10ml every 6 hours', '1 tablet every 8 hours', 'Combiflam if pain is severe. ORS to prevent dehydration.'],
+    ['TENSION HEADACHE', 1, 1, 0, 'Paracetamol', '1 tablet every 6–8 hours', '5–10ml every 6 hours', '1 tablet every 8 hours', 'Saridon if no relief in 1 hour. Get some sleep.'],
+    ['MIGRAINE', 1, 1, 0, 'Paracetamol', '1 tablet every 6–8 hours', '5–10ml every 6 hours', '1 tablet every 8 hours', 'Saridon. Domstal 10mg for nausea. Dark room rest.'],
+    
+    // Track D
+    ['ALLERGIC RASH / URTICARIA', 2, 1, 0, 'Cetirizine 10mg', '1 tablet once daily at night', '5mg syrup / Half tablet daily', '5mg once daily at night', 'Apply Calamine lotion. Avoid allergens.'],
+    ['BACTERIAL SKIN INFECTION', 2, 1, 0, 'Cetirizine 10mg', '1 tablet once daily at night', '5mg syrup / Half tablet daily', '5mg once daily at night', 'Mupirocin 2% cream (T-Bact) applied locally.'],
+    
+    // Track C
+    ['FOOD POISONING / GASTROENTERITIS', 3, 1, 0, 'ORS Electral', '200–400ml after every loose stool', '100–200ml after every loose stool', 'Small continuous sips', 'Racecadotril 100mg for adults. Domstal for vomiting.'],
+    ['FOOD POISONING', 3, 1, 0, 'ORS Electral', '200–400ml after every loose stool', '100–200ml after every loose stool', 'Small continuous sips', 'Domperidone 10mg (Domstal). Small sips of ORS.'],
+    
+    // Track D again
+    ['FUNGAL INFECTION', 4, 1, 0, 'Clotrimazole 1% Cream', 'Apply thin layer twice daily', 'Consult doctor before use', 'Apply thin layer twice daily', 'Keep area clean and dry. Wear loose cotton clothes.'],
+    ['FUNGAL (Tinea Versicolor)', 4, 1, 0, 'Clotrimazole 1% Cream', 'Apply thin layer twice daily', 'Consult doctor before use', 'Apply thin layer twice daily', 'Selenium sulfide shampoo (Selsun) applied to spots.'],
+    
+    // Non-dispensable Tracks
+    ['ACIDITY / GASTRITIS', null, 0, 0, 'Pantoprazole 40mg', '1 tablet before breakfast', 'Consult Doctor', '1 tablet before breakfast', 'Gelusil / Digene after meals.'],
+    ['GAS / IBS', null, 0, 0, 'Simethicone', '1 tablet after meals', 'Consult Doctor', '1 tablet after meals', 'Meftal Spas for cramps.'],
+    
+    // Others
+    ['OTHER — URGENT', null, 0, 1, 'EMERGENCY REFERRAL', 'Immediate Doctor Consult', 'Immediate Doctor Consult', 'Immediate Doctor Consult', 'GO TO HOSPITAL IMMEDIATELY.'],
+    ['OTHER', null, 0, 1, 'Doctor Referral Required', 'Consult Doctor', 'Consult Doctor', 'Consult Doctor', 'Symptoms need professional medical evaluation.']
+  ];
+  
+  for (const [name, comp, disp, serious, med, adult, child, elderly, adv] of initialDiseases) {
+    await db.run(
+      'INSERT INTO disease_compartment_map (disease_name, compartment_number, is_dispensable, is_serious, medicine_name, dosage_adult, dosage_child, dosage_elderly, advice) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [name, comp, disp, serious, med, adult, child, elderly, adv]
+    );
+  }
 
   // Pre-insert inventory if empty
   const inventoryCount = await db.get('SELECT COUNT(*) as count FROM inventory');
   if (inventoryCount.count === 0) {
+    const meds = ['Paracetamol', 'Cetirizine 10mg', 'ORS Electral', 'Clotrimazole 1%'];
     for (let i = 1; i <= 4; i++) {
       await db.run(
         'INSERT INTO inventory (compartment_number, medicine_name, current_count, last_updated) VALUES (?, ?, ?, ?)',
-        [i, '', 0, new Date().toISOString()]
+        [i, meds[i-1], 0, new Date().toISOString()]
       );
     }
   }

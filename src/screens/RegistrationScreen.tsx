@@ -7,7 +7,6 @@ import { QRCodeDisplay } from '../utils/qrUtils';
 import { sendQRCodeEmail } from '../services/emailService';
 import { getAllSettings } from '../services/settingsService';
 import { motion, AnimatePresence } from 'motion/react';
-import { db } from '../utils/db';
 
 export const RegistrationScreen = () => {
   const { t, language, setCurrentPatient } = useAppContext();
@@ -75,25 +74,28 @@ export const RegistrationScreen = () => {
 
     try {
       const { confirmPassword, ...submitData } = formData;
-      
-      // Save to local IndexedDB
-      const patientId = await db.patients.add({
-        ...submitData,
-        age: parseInt(formData.age),
-        lastVisit: new Date().toISOString(),
-        phone: formData.email // Using email as unique ID for now
+      const response = await fetch('/api/patients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(submitData)
       });
 
-      const qrCode = `HEALER_PATIENT_${patientId}`;
-      
-      // Update with QR code
-      await db.patients.update(patientId, { id: patientId }); // Ensure ID is part of record
-      
-      const patient = { ...submitData, id: patientId, qr_code: qrCode };
-      setRegisteredPatient(patient);
-      setCurrentPatient(patient);
-      setShowQRModal(true);
+      if (response.ok) {
+        let patient = await response.json();
+        const qrCode = `HEALER_PATIENT_${patient.id}`;
+        const updateResponse = await fetch(`/api/patients/${patient.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ qr_code: qrCode })
+        });
 
+        if (updateResponse.ok) {
+          patient = await updateResponse.json();
+          setRegisteredPatient(patient);
+          setCurrentPatient(patient);
+          setShowQRModal(true);
+        }
+      }
     } catch (err) {
       console.error("Registration failed", err);
     }

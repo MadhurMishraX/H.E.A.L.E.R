@@ -13,7 +13,6 @@ import {
 } from './screens';
 import { Loader2 } from 'lucide-react';
 import { initSerial, onMessage } from './utils/serialComm';
-import { seedDatabase } from './utils/db';
 
 const MainLayout = () => {
   const [dbReady, setDbReady] = useState(false);
@@ -40,14 +39,38 @@ const MainLayout = () => {
   }, [location.pathname, navigate, setCurrentPatient, setCurrentSession]);
 
   useEffect(() => {
-    // Initialize Local IndexedDB
-    seedDatabase().then(() => {
-      console.log("Local Database Ready.");
-      setDbReady(true);
-    }).catch(err => {
-      console.error("Database initialization failed", err);
-      setDbReady(true); // Fallback to allow app use anyway
-    });
+    // Ping backend to check if DB is initialized
+    fetch('/api/health')
+      .then(res => res.json())
+      .then(async data => {
+        if (data.status === 'ok') {
+          await initSerial();
+          
+          let connected = false;
+          const timeoutId = setTimeout(() => {
+            if (!connected) {
+               setIsHardwareConnected(false);
+               setDbReady(true);
+            }
+          }, 3000);
+
+          onMessage((msg) => {
+            if (msg.trim() === 'ARDUINO_READY') {
+              connected = true;
+              setIsHardwareConnected(true);
+              clearTimeout(timeoutId);
+              setDbReady(true);
+              
+              fetch('/api/logs/admin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: `Hardware connected on startup [${new Date().toISOString()}]` })
+              }).catch(() => {});
+            }
+          });
+        }
+      })
+      .catch(err => console.error("Backend not ready yet", err));
   }, []);
 
   if (!dbReady) {

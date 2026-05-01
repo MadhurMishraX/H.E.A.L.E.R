@@ -4,7 +4,6 @@ import { useAppContext } from '../context/AppContext';
 import { QUESTION_TREE, calculateDiagnosis, getNextQuestion } from '../utils/diagnosisEngine';
 import { getAgeGroup } from '../utils/ageUtils';
 import { motion, AnimatePresence } from 'motion/react';
-import { db } from '../utils/db';
 import { 
   Stethoscope, 
   ArrowRight, 
@@ -22,7 +21,7 @@ export const DiagnosisScreen = () => {
   const { t, language, currentPatient, setCurrentSession } = useAppContext();
   const navigate = useNavigate();
 
-  const [currentQuestionId, setCurrentQuestionId] = useState<string>('Q0');
+  const [currentQuestionId, setCurrentQuestionId] = useState<string>('Q1');
   const [sessionAnswers, setSessionAnswers] = useState<any[]>([]);
   const [selectedOptions, setSelectedOptions] = useState<number[]>([]);
   const [diseaseScores, setDiseaseScores] = useState<Record<string, number>>({});
@@ -55,6 +54,7 @@ export const DiagnosisScreen = () => {
   }, [isAnalyzing]);
 
   const handleOptionToggle = (idx: number) => {
+    if (!currentQuestion) return;
     if (currentQuestion.type === 'multiple_select') {
       if (selectedOptions.includes(idx)) {
         setSelectedOptions(selectedOptions.filter(i => i !== idx));
@@ -71,11 +71,12 @@ export const DiagnosisScreen = () => {
   };
 
   const processAnswer = (indices: number[]) => {
+    if (!currentQuestion) return;
     const newScores = { ...diseaseScores };
     indices.forEach(idx => {
-      const opt = currentQuestion.options[idx];
-      Object.entries(opt.symptom_weights).forEach(([disease, weight]) => {
-        newScores[disease] = (newScores[disease] || 0) + weight;
+      const opt = currentQuestion.options[idx] as any;
+      Object.entries(opt.symptom_weights || {}).forEach(([disease, weight]) => {
+        newScores[disease] = (newScores[disease] || 0) + (weight as number);
       });
     });
 
@@ -83,7 +84,7 @@ export const DiagnosisScreen = () => {
       question_id: currentQuestionId,
       question_text: language === 'en' ? currentQuestion.text_en : currentQuestion.text_hi,
       selected_option: currentQuestion.type === 'multiple_select' ? indices : indices[0],
-      weights_added: indices.map(idx => currentQuestion.options[idx].symptom_weights)
+      weights_added: indices.map(idx => (currentQuestion.options[idx] as any).symptom_weights || {})
     };
 
     const newSessionAnswers = [...sessionAnswers, newAnswer];
@@ -133,49 +134,53 @@ export const DiagnosisScreen = () => {
 
     setTimeout(async () => {
       try {
-        const diagnosisName = results.diagnosis || "Undetermined Condition";
-        
-        // Offline Disease Map (Fallback if API is down)
-        const inventory = await db.inventory.toArray();
-        const diseaseMap = inventory.find(i => 
-          i.name && diagnosisName && i.name.toLowerCase().includes(diagnosisName.toLowerCase())
-        );
+        const mapResponse = await fetch(`/api/disease-map/${results.diagnosis}`);
+        const diseaseMap = await mapResponse.json();
 
         const sessionPayload = {
-          patient_id: currentPatient?.id || 0,
+          patient_id: currentPatient.id,
           timestamp: new Date().toISOString(),
-          diagnosed_disease: diagnosisName,
-          confidence_score: results.confidence || 0,
-          top_alternatives: JSON.stringify(results.top3 || []),
+          diagnosed_disease: results.diagnosis,
+          confidence_score: results.confidence,
+          top_alternatives: results.top3,
           ai_used: aiResult ? 1 : 0,
           ai_result: aiResult ? JSON.stringify(aiResult) : null,
-          action_taken: results.action || 'consult_doctor'
+          action_taken: results.action
         };
 
-        // Save Session Locally
-        const sessionId = await db.sessions.add(sessionPayload);
+        const sessionRes = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sessionPayload)
+        });
+        const { id: sessionId } = await sessionRes.json();
 
-        // Save Prescription Locally
-        const medicineName = diseaseMap?.name || "General Care / Consult Doctor";
-        const dosage = ageGroup === 'child' ? "Half Tablet" : "1 Tablet"; 
+        // Always try to create a prescription entry if we have medicine info or just generic advice
+        const medicineName = diseaseMap?.medicine_name || "General Care / Consult Doctor";
+        const dosage = diseaseMap ? (ageGroup === 'child' ? diseaseMap.dosage_child : 
+                       ageGroup === 'adult' ? diseaseMap.dosage_adult : 
+                       diseaseMap.dosage_elderly) : "As recommended by physician";
 
-        await db.prescriptions.add({
-          session_id: sessionId,
-          medicine_name: medicineName,
-          dosage: dosage,
-          frequency: "Twice daily",
-          duration: "5 days",
-          compartment_number: diseaseMap?.slot || 0
+        await fetch('/api/prescriptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            medicine_name: medicineName,
+            dosage: dosage || "Consult pharmacist",
+            frequency: diseaseMap?.is_serious ? "URGENT" : "As instructed", 
+            duration: diseaseMap?.is_serious ? "Immediate" : "5 days",
+            compartment_number: diseaseMap?.compartment_number || 0
+          })
         });
 
         setCurrentSession({ id: sessionId, ...sessionPayload });
         navigate('/prescription');
       } catch (err) {
-         console.error("Failed to save diagnosis locally", err);
-         // Ensure we still navigate even if DB fails
+         console.error("Failed to save diagnosis", err);
          navigate('/prescription'); 
       }
-    }, 2000);
+    }, 3000); // give 3 seconds for analyzing animation
   };
 
   const startCamera = async () => {
@@ -355,7 +360,7 @@ export const DiagnosisScreen = () => {
             </div>
 
             <h2 className="text-4xl font-bold text-text-primary mb-6 leading-tight">
-              {language === 'en' ? currentQuestion.text_en : currentQuestion.text_hi}
+              {language === 'en' ? currentQuestion?.text_en : currentQuestion?.text_hi}
             </h2>
 
             <div className="flex items-center gap-2 mb-10 text-text-muted italic text-sm">
@@ -372,7 +377,7 @@ export const DiagnosisScreen = () => {
                {t('diagnosis.crossRef')}
             </div>
 
-            {currentQuestion.camera_trigger && !aiResult && (
+            {currentQuestion?.camera_trigger && !aiResult && (
                <motion.button 
                  whileTap={{ scale: 0.98 }}
                  onClick={startCamera}
@@ -397,7 +402,7 @@ export const DiagnosisScreen = () => {
             )}
 
              <div className="grid grid-cols-1 gap-4 mt-auto">
-               {currentQuestion.options.map((option, idx) => {
+               {currentQuestion?.options?.map((option, idx) => {
                  const isSelected = selectedOptions.includes(idx);
                  
                  return (
@@ -435,7 +440,7 @@ export const DiagnosisScreen = () => {
                  {t('common.back') || 'Back'}
                </motion.button>
 
-               {(currentQuestion.type === 'multiple_select' || currentQuestion.type === 'multiple_choice') && (
+               {(currentQuestion?.type === 'multiple_select' || currentQuestion?.type === 'multiple_choice') && (
                  <motion.button 
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}

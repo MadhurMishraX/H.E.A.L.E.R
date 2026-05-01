@@ -12,10 +12,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { initSerial, sendCommand, onMessage, closeSerial } from '../utils/serialComm';
-import { db } from '../utils/db';
 
 export const DispensingScreen = () => {
-  const { t, currentPatient, isHardwareConnected, connectHardware } = useAppContext();
+  const { t, currentPatient } = useAppContext();
   const location = useLocation();
   const navigate = useNavigate();
   const params = location.state || {};
@@ -25,7 +24,7 @@ export const DispensingScreen = () => {
     medicine_name, 
     quantity_dispensed, 
     session_id,
-    isFirstAid 
+    isFirstAid
   } = params;
 
   const [timeLeft, setTimeLeft] = useState(10);
@@ -37,44 +36,34 @@ export const DispensingScreen = () => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (!isFirstAid && !params.compartment_number) {
-      navigate('/prescription');
+    if (!params.compartment_number && !params.isFirstAid) {
+      navigate('/landing');
       return;
     }
 
-    let unsubscribe: (() => void) | null = null;
-
     const startFlow = async () => {
-      // 1. Ensure connected
-      if (!isHardwareConnected) {
-        const res = await connectHardware();
-        if (!res) {
-          setHardwareError(true);
-          return;
-        }
+      // 1. Init Serial
+      const serial = await initSerial();
+      if (!serial.success) {
+        setHardwareError(true);
       }
 
       // 2. Register listener
-      unsubscribe = onMessage((msg) => {
-        db.logs.add({
-          timestamp: new Date().toISOString(),
-          type: 'system',
-          message: `HW_ACK: ${msg}`
+      onMessage((msg) => {
+        fetch('/api/logs/admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: `SERIAL ACK: ${msg}` })
         });
       });
 
       // 3. Send Commands
-      try {
-        if (isFirstAid) {
-          await sendCommand(`OPEN_FA`);
-        } else {
-          await sendCommand(`OPEN_${compartment_number}`);
-        }
-        await sendCommand(`CAM_ON`);
-      } catch (err) {
-        console.error("Hardware command failed:", err);
-        setHardwareError(true);
+      if (isFirstAid) {
+        await sendCommand(`OPEN_FA`);
+      } else {
+        await sendCommand(`OPEN_${compartment_number}`);
       }
+      await sendCommand(`CAM_ON`);
 
       // 4. Start Timer
       timerRef.current = setInterval(() => {
@@ -93,9 +82,9 @@ export const DispensingScreen = () => {
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (unsubscribe) unsubscribe();
+      closeSerial();
     };
-  }, [isHardwareConnected, connectHardware, compartment_number, navigate, params.compartment_number, isFirstAid]);
+  }, []);
 
   const handleComplete = async () => {
     setIsProcessing(true);
@@ -109,48 +98,64 @@ export const DispensingScreen = () => {
     await sendCommand(`CAM_OFF`);
 
     if (isFirstAid) {
+      fetch('/api/logs/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: "Instant First Aid Dispensed" })
+      });
       setIsCompleted(true);
       setIsProcessing(false);
       return;
     }
 
     try {
-      // 6. DB Updates & Logging (Offline-First)
-      if (!isFirstAid) {
-        // Find item in local DB
-        const item = await db.inventory.where('slot').equals(parseInt(compartment_number)).first();
-        if (item && item.id) {
-          const newCount = Math.max(0, item.count - (parseInt(quantity_dispensed) || 1));
-          await db.inventory.update(item.id, { count: newCount });
-        }
+      // 6. DB Updates & Logging
+      const response = await fetch('/api/dispense', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          compartment_number,
+          quantity_dispensed,
+          session_id,
+          medicine_name,
+          patient_id: currentPatient?.id,
+          patient_name: currentPatient?.name
+        })
+      });
 
-        // Add to local logs
-        await db.logs.add({
-          timestamp: new Date().toISOString(),
-          type: 'dispense',
-          message: `Dispensed ${quantity_dispensed} units of ${medicine_name} from slot ${compartment_number} for patient ${currentPatient?.name || 'Unknown'}`
-        });
+      if (response.ok) {
+        setIsCompleted(true);
+      } else {
+        const errorData = await response.json();
+        setDbError(errorData.error || t('dispensing.stockError'));
       }
-
-      setIsCompleted(true);
     } catch (err) {
-      console.error("Local DB update failed:", err);
-      // Even if logging fails, we show success if hardware worked
-      setIsCompleted(true); 
+      console.error(err);
+      setDbError(t('dispensing.stockError'));
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleCancel = async () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setIsProcessing(true);
+    
+    if (isFirstAid) {
+      await sendCommand(`CLOSE_FA`);
+    } else {
+      await sendCommand(`CLOSE_${compartment_number}`);
+    }
+    await sendCommand(`CAM_OFF`);
+
+    setIsProcessing(false);
+    navigate(isFirstAid ? '/' : '/prescription');
   };
 
   const addTime = () => {
     if(!isCompleted && !isProcessing) {
        setTimeLeft((prev) => prev + 10);
     }
-  };
-
-  const handleCancel = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    handleComplete();
   };
 
   return (
@@ -162,7 +167,7 @@ export const DispensingScreen = () => {
       <motion.div 
         animate={{ opacity: [0.3, 0.6, 0.3] }}
         transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        className={`absolute inset-0 blur-[150px] pointer-events-none transition-colors duration-1000 ${isCompleted ? 'bg-[radial-gradient(ellipse_at_center,_var(--color-brand-success)_0%,_transparent_60%)]' : isFirstAid ? 'bg-[radial-gradient(ellipse_at_center,_var(--color-brand-danger)_0%,_transparent_60%)]' : 'bg-[radial-gradient(ellipse_at_center,_var(--color-brand-primary)_0%,_transparent_60%)]'}`} 
+        className={`absolute inset-0 blur-[150px] pointer-events-none transition-colors duration-1000 ${isCompleted ? 'bg-[radial-gradient(ellipse_at_center,_var(--color-brand-success)_0%,_transparent_60%)]' : 'bg-[radial-gradient(ellipse_at_center,_var(--color-brand-primary)_0%,_transparent_60%)]'}`} 
       />
 
       {hardwareError && (
@@ -186,10 +191,10 @@ export const DispensingScreen = () => {
               exit={{ opacity: 0, scale: 1.05 }}
               className="flex flex-col items-center text-center w-full"
             >
-              <h2 className={`text-4xl font-bold mb-2 tracking-wide ${isFirstAid ? 'text-brand-danger' : 'text-text-primary'}`}>
+              <h2 className="text-4xl font-bold text-text-primary mb-2 tracking-wide">
                 {isFirstAid ? t('dispensing.firstAidKit') : t('dispensing.dispensing').replace('{{medicine}}', medicine_name)}
               </h2>
-              <p className={`text-xl font-bold mb-16 uppercase tracking-[0.2em] ${isFirstAid ? 'text-brand-danger/80' : 'text-brand-secondary/80'}`}>
+              <p className="text-xl text-brand-secondary/80 font-bold mb-16 uppercase tracking-[0.2em]">
                 {isFirstAid ? t('dispensing.emergencyAccess') : t('dispensing.subtitle').replace('{{n}}', compartment_number)}
               </p>
 
@@ -198,8 +203,8 @@ export const DispensingScreen = () => {
                 <svg className="absolute w-full h-full rotate-[-90deg]">
                   <defs>
                     <linearGradient id="timerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor={isFirstAid ? "var(--color-brand-danger)" : "var(--color-brand-secondary)"} />
-                      <stop offset="100%" stopColor={isFirstAid ? "#FF5252" : "var(--color-brand-primary)"} />
+                      <stop offset="0%" stopColor="var(--color-brand-secondary)" />
+                      <stop offset="100%" stopColor="var(--color-brand-primary)" />
                     </linearGradient>
                   </defs>
                   <circle 
@@ -208,16 +213,16 @@ export const DispensingScreen = () => {
                   <motion.circle 
                     cx="160" cy="160" r="140" fill="none" stroke="url(#timerGrad)" strokeWidth="12" strokeLinecap="round"
                     strokeDasharray={880}
-                    animate={{ strokeDashoffset: 880 - (timeLeft / Math.max(10, timeLeft)) * 880 }}
+                    animate={{ strokeDashoffset: 880 - (timeLeft / 20) * 880 }}
                     transition={{ ease: "linear", duration: 1 }}
-                    className={`drop-shadow-[0_0_15px_${isFirstAid ? 'rgba(255,82,82,0.5)' : 'rgba(33,150,243,0.5)'}]`}
+                    className="drop-shadow-[0_0_15px_rgba(33,150,243,0.5)]"
                   />
                 </svg>
                 <div className="flex flex-col items-center z-10">
                   <span className="text-[80px] font-mono font-bold text-white leading-none drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">
                     {timeLeft}
                   </span>
-                  <span className={`text-sm font-bold uppercase tracking-[0.2em] mt-2 glow ${isFirstAid ? 'text-brand-danger' : 'text-brand-secondary'}`}>
+                  <span className="text-sm font-bold text-brand-secondary uppercase tracking-[0.2em] mt-2 glow">
                     Seconds
                   </span>
                 </div>
@@ -227,36 +232,34 @@ export const DispensingScreen = () => {
                 {isFirstAid 
                   ? t('dispensing.collectFirstAid')
                   : t('dispensing.collectInstructions')
-                      .replace('{{q}}', quantity_dispensed)
-                      .replace('{{m}}', medicine_name)}
+                  .replace('{{q}}', quantity_dispensed)
+                  .replace('{{m}}', medicine_name)}
               </p>
 
-              <div className="flex gap-6">
+              <div className="flex gap-6 items-center">
                 <motion.button 
                   whileTap={{ scale: 0.95 }}
                   onClick={addTime}
                   disabled={isProcessing}
-                  className={`h-16 px-8 rounded-full flex items-center gap-4 transition-all border-2 ${isFirstAid ? 'border-brand-danger text-brand-danger hover:bg-[rgba(255,82,82,0.1)] hover:shadow-[0_0_20px_rgba(255,82,82,0.3)]' : 'border-brand-secondary text-brand-secondary hover:bg-[rgba(0,188,212,0.1)] hover:shadow-[0_0_20px_rgba(0,188,212,0.3)]'} disabled:opacity-50`}
+                  className="h-16 px-8 rounded-full flex items-center gap-4 transition-all border-2 border-brand-secondary text-brand-secondary hover:bg-[rgba(0,188,212,0.1)] hover:shadow-[0_0_20px_rgba(0,188,212,0.3)] disabled:opacity-50"
                 >
                   <Plus size={24} />
                   <span className="text-sm font-bold uppercase tracking-widest">+10 Seconds</span>
                 </motion.button>
 
-                {isFirstAid && (
-                  <motion.button 
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleCancel}
-                    disabled={isProcessing}
-                    className="h-16 px-8 rounded-full flex items-center gap-4 transition-all bg-brand-danger text-white shadow-[0_4px_15px_rgba(255,82,82,0.3)] disabled:opacity-50"
-                  >
-                    <AlertTriangle size={24} />
-                    <span className="text-sm font-bold uppercase tracking-widest">{t('dispensing.cancel')}</span>
-                  </motion.button>
-                )}
+                <motion.button 
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleCancel}
+                  disabled={isProcessing}
+                  className="h-16 px-8 rounded-full flex items-center gap-4 transition-all border-2 border-brand-danger text-brand-danger hover:bg-[rgba(255,82,82,0.1)] hover:shadow-[0_0_20px_rgba(255,82,82,0.3)] disabled:opacity-50"
+                >
+                  <ArrowLeft size={24} />
+                  <span className="text-sm font-bold uppercase tracking-widest">{t('dispensing.cancel')}</span>
+                </motion.button>
               </div>
               
               {isProcessing && (
-                <div className={`mt-8 flex items-center gap-3 font-bold text-sm tracking-widest uppercase glow ${isFirstAid ? 'text-brand-danger' : 'text-brand-primary'}`}>
+                <div className="mt-8 flex items-center gap-3 text-brand-primary font-bold text-sm tracking-widest uppercase glow">
                   <Loader2 className="animate-spin" size={20} />
                   Processing...
                 </div>
@@ -275,10 +278,10 @@ export const DispensingScreen = () => {
               <h2 className="text-3xl font-bold text-text-primary mb-12">{dbError}</h2>
               <motion.button 
                 whileTap={{ scale: 0.96 }}
-                onClick={() => navigate('/prescription')}
+                onClick={() => navigate(isFirstAid ? '/' : '/prescription')}
                 className="h-16 px-10 bg-brand-primary text-white rounded-full text-sm font-bold tracking-widest uppercase shadow-[0_0_20px_rgba(33,150,243,0.4)]"
               >
-                {t('dispensing.backToPrescription')}
+                {isFirstAid ? t('landing.home') : t('dispensing.backToPrescription')}
               </motion.button>
             </motion.div>
           ) : (
