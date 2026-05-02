@@ -20,11 +20,13 @@
 #include "driver/rtc_io.h"
 #include <WiFi.h>
 #include <WebServer.h>
+#include <ESPmDNS.h>
 
 // --- Configuration ---
 const bool WIFI_ENABLED = true;
-const char* WIFI_SSID = "HEALER_Control";
-const char* WIFI_PASSWORD = "password123";
+// Replace these with your actual WiFi credentials
+const char* WIFI_SSID = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
 const int TRIGGER_PIN = 13;
 const int CAPTURE_INTERVAL = 2000; // 2 seconds
@@ -34,6 +36,11 @@ bool isCapturing = false;
 unsigned long lastCaptureTime = 0;
 unsigned long sessionStartTime = 0;
 int photoCounter = 0;
+
+// Communication queues
+String messageQueue[10];
+int msgHead = 0;
+int msgTail = 0;
 
 WebServer server(80);
 
@@ -127,10 +134,57 @@ void setup() {
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
+    if (!MDNS.begin("healer-esp32")) {
+      Serial.println("Error setting up MDNS responder!");
+    } else {
+      Serial.println("mDNS responder started: healer-esp32.local");
+    }
+
+    // Configure CORS headers for all responses
+    server.on("/ping", HTTP_GET, []() {
+      server.sendHeader("Access-Control-Allow-Origin", "*");
+      server.send(200, "text/plain", "pong");
+    });
+
+    server.on("/command", HTTP_GET, []() {
+      server.sendHeader("Access-Control-Allow-Origin", "*");
+      if (server.hasArg("cmd")) {
+        String cmd = server.arg("cmd");
+        // Forward command to Arduino Mega via Serial1
+        Serial1.println(cmd);
+        Serial.println("Forwarded to Mega: " + cmd);
+        server.send(200, "text/plain", "OK");
+      } else {
+        server.send(400, "text/plain", "Missing cmd param");
+      }
+    });
+
+    server.on("/messages", HTTP_GET, []() {
+      server.sendHeader("Access-Control-Allow-Origin", "*");
+      String json = "[";
+      bool first = true;
+      while (msgHead != msgTail) {
+        if (!first) json += ",";
+        json += "\"" + messageQueue[msgTail] + "\"";
+        msgTail = (msgTail + 1) % 10;
+        first = false;
+      }
+      json += "]";
+      server.send(200, "application/json", json);
+    });
+
     server.on("/photos", HTTP_GET, handleListPhotos);
     server.onNotFound(handlePhotoRequest);
     server.begin();
   }
+
+  // Initialize Serial1 for communication with Mega
+  // ESP32 RX = GPIO 3 (RX0) or define custom. We'll use standard Serial1 if reassigned, but usually:
+  // Assuming Mega is connected to ESP32 pins 12, 14 or similar. Adjust as needed.
+  // Using standard pins for Serial1 (RX=9, TX=10) on some boards, but for ESP32CAM we carefully pick pins.
+  // Actually, GPIO 1 and 3 are standard Serial.
+  // Let's use GPIO 14 (TX) and 15 (RX) for Serial1
+  Serial1.begin(9600, SERIAL_8N1, 15, 14);
 
   Serial.println("ESP32CAM_READY");
 }
@@ -138,6 +192,20 @@ void setup() {
 void loop() {
   if (WIFI_ENABLED) {
     server.handleClient();
+  }
+
+  // Read incoming messages from Arduino Mega
+  if (Serial1.available()) {
+    String msg = Serial1.readStringUntil('\n');
+    msg.trim();
+    if (msg.length() > 0) {
+      Serial.println("From Mega: " + msg);
+      messageQueue[msgHead] = msg;
+      msgHead = (msgHead + 1) % 10;
+      if (msgHead == msgTail) { // Queue full, drop oldest
+        msgTail = (msgTail + 1) % 10;
+      }
+    }
   }
 
   int triggerStatus = digitalRead(TRIGGER_PIN);

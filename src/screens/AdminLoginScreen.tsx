@@ -37,8 +37,8 @@ export const AdminLoginScreen = () => {
       setAdminPin(pinSetting || '1234');
 
       // Init serial and listen for RFID
-      await initSerial();
-      onMessage((msg) => {
+      // (initSerial is managed by App.tsx)
+      const unlisten = onMessage((msg) => {
         if (msg.trim() === 'RFID_DETECTED' && step === 'rfid') {
           handleRfidSuccess();
         }
@@ -46,16 +46,19 @@ export const AdminLoginScreen = () => {
 
       // Start RFID timeout
       startRfidTimeout();
+
+      return unlisten;
     };
 
-    setup();
+    let unlistenFn: (() => void) | undefined;
+    setup().then(fn => { unlistenFn = fn; });
 
     return () => {
       if (rfidTimeoutRef.current) clearTimeout(rfidTimeoutRef.current);
       if (lockoutIntervalRef.current) clearInterval(lockoutIntervalRef.current);
-      closeSerial();
+      if (unlistenFn) unlistenFn();
     };
-  }, []);
+  }, [step]);
 
   const startRfidTimeout = () => {
     if (rfidTimeoutRef.current) clearTimeout(rfidTimeoutRef.current);

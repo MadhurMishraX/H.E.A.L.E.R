@@ -14,7 +14,19 @@ let wifiPollInterval: number | null = null;
 
 let _connType: ConnectionType = (localStorage.getItem('hw_conn_type') as ConnectionType) || 'simulated';
 let _wifiUrl: string = localStorage.getItem('hw_conn_url') || 'http://healer-esp32.local';
-let messageCallback: ((msg: string) => void) | null = null;
+let messageCallbacks: Set<(msg: string) => void> = new Set();
+
+export function onMessage(callback: (msg: string) => void) {
+  messageCallbacks.add(callback);
+  return () => {
+    messageCallbacks.delete(callback);
+  };
+}
+
+function dispatchMessage(msg: string) {
+  console.log(`SERIAL RECV: ${msg}`);
+  messageCallbacks.forEach(cb => cb(msg));
+}
 
 export function updateHardwareConfig(type: ConnectionType, url?: string) {
   _connType = type;
@@ -63,7 +75,7 @@ function startWifiPolling() {
       const msgs = await res.json();
       if (Array.isArray(msgs)) {
         msgs.forEach(msg => {
-          if (msg && messageCallback) messageCallback(msg);
+          if (msg) dispatchMessage(msg);
         });
       }
     } catch(e) {
@@ -77,6 +89,11 @@ async function initWebSerial() {
     console.warn("Web Serial API not supported in this browser.");
     return { success: false, error: 'Not supported' };
   }
+  
+  if (port) {
+    return { success: true };
+  }
+
   try {
     const requestOptions = {
         filters: [{ usbVendorId: 0x2341 }] // Arduino vendor ID
@@ -95,19 +112,23 @@ async function initWebSerial() {
     return { success: false, error: 'No authorized port found. Click connect in settings.' };
   } catch (err: any) {
     console.error("Failed to init Web Serial:", err);
+    port = null;
     return { success: false, error: err.message };
   }
 }
 
 export async function requestWebSerialPort() {
   try {
-    port = await (navigator as any).serial.requestPort();
+    const newPort = await (navigator as any).serial.requestPort();
+    if (port) { await closeSerial(); } // Clean up old one if exists
+    port = newPort;
     await port.open({ baudRate: 9600 });
     writer = port.writable.getWriter();
     keepReading = true;
     readPromise = readUntilClosed();
     return { success: true };
   } catch(err: any) {
+    port = null;
     return { success: false, error: err.message };
   }
 }
@@ -125,9 +146,8 @@ async function readUntilClosed() {
         while (newlineIndex >= 0) {
           const msg = buffer.slice(0, newlineIndex).trim();
           buffer = buffer.slice(newlineIndex + 1);
-          if (msg && messageCallback) {
-            console.log(`SERIAL RECV [USB]: ${msg}`);
-            messageCallback(msg);
+          if (msg) {
+            dispatchMessage(msg);
           }
           newlineIndex = buffer.indexOf('\n');
         }
@@ -174,15 +194,8 @@ export async function sendCommand(command: string) {
   }
 }
 
-export function onMessage(callback: (msg: string) => void) {
-  messageCallback = callback;
-}
-
 function simulateInbound(msg: string) {
-  console.log(`SERIAL RECV: ${msg}`);
-  if (messageCallback) {
-    messageCallback(msg);
-  }
+  dispatchMessage(msg);
 }
 
 export async function closeSerial() {

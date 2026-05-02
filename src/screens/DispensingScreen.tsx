@@ -42,18 +42,15 @@ export const DispensingScreen = () => {
       return;
     }
 
+    let unlistenFn: (() => void) | undefined;
     const startFlow = async () => {
-      // 1. Init Serial
-      const serial = await initSerial();
-      if (!serial.success) {
-        setHardwareError(true);
-      }
+      // 1. Init Serial - omitted, managed by App.tsx
 
       // Check if still mounted after async init
       if (timerRef.current === undefined) return; 
 
       // 2. Register listener
-      onMessage((msg) => {
+      unlistenFn = onMessage((msg) => {
         addAdminLog(`SERIAL ACK: ${msg}`).catch(() => {});
       });
 
@@ -85,11 +82,11 @@ export const DispensingScreen = () => {
     startFlow();
 
     return () => {
+      if (unlistenFn) unlistenFn();
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = undefined; // Mark as unmounted
       }
-      closeSerial();
     };
   }, []);
 

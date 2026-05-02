@@ -20,8 +20,23 @@ const MainLayout = () => {
   const location = useLocation();
 
   useEffect(() => {
-    initSerial();
-  }, []);
+    let unmounted = false;
+    initSerial().then((res: any) => {
+      if (!unmounted) setIsHardwareConnected(res.success);
+    });
+    
+    // Also update if we hear ARDUINO_READY
+    const unlisten = onMessage((msg) => {
+      if (!unmounted && msg.trim() === "ARDUINO_READY") {
+        setIsHardwareConnected(true);
+      }
+    });
+
+    return () => {
+      unmounted = true;
+      unlisten();
+    };
+  }, [setIsHardwareConnected]);
 
   useEffect(() => {
     // Intercept back button for Android Kiosk

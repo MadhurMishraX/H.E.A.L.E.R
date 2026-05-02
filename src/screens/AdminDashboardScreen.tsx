@@ -59,7 +59,7 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
   const [testCmd, setTestCmd] = useState('');
 
   useEffect(() => {
-    onMessage((msg) => {
+    const unlisten = onMessage((msg) => {
       const timestamp = new Date().toLocaleTimeString();
       setSerialLog((prev: any) => [{ timestamp, type: 'IN', msg }, ...prev].slice(0, 20));
       
@@ -74,6 +74,10 @@ const CompartmentsTab = ({ inventory, setInventory, serialLog, setSerialLog }: a
         setStatuses(prev => ({ ...prev, [key]: 'Closed' }));
       }
     });
+
+    return () => {
+      unlisten();
+    };
   }, []);
 
   const handleOpen = (n: number) => {
