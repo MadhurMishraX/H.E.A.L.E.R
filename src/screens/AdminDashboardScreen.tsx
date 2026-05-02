@@ -244,6 +244,21 @@ const HardwareModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => vo
               )}
             </button>
           </div>
+
+          {config.type === 'simulated' && status === 'connected' && (
+            <div className="mt-8 p-6 bg-white/5 rounded-2xl border border-white/10">
+              <p className="text-xs font-bold text-text-muted uppercase tracking-widest mb-4">Simulation Shortcuts</p>
+              <button 
+                onClick={() => {
+                  simulateInbound("RFID_DETECTED: 45 8B 1F 2D");
+                  onClose();
+                }}
+                className="w-full py-3 bg-brand-primary text-white rounded-xl font-bold text-sm tracking-widest uppercase hover:brightness-110 transition-all shadow-[0_4px_12px_rgba(33,150,243,0.3)]"
+              >
+                Simulate ID Scan (John)
+              </button>
+            </div>
+          )}
         </div>
         
         {status === 'connecting' ? (

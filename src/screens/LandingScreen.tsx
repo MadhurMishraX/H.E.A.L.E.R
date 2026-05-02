@@ -17,7 +17,7 @@ import { loginPatient, loginPatientByQR, getPatientFullHistory } from '../servic
 import { getHardwareConfig, updateHardwareConfig, requestWebSerialPort } from '../utils/serialComm';
 
 export const LandingScreen = () => {
-  const { t, language, setLanguage, setCurrentPatient, hwStatus, hwMode } = useAppContext();
+  const { t, language, setLanguage, setCurrentPatient, hwStatus, hwMode, lastHardwareMessage } = useAppContext();
   const isHardwareConnected = hwStatus === 'connected';
   const navigate = useNavigate();
   const [showScanner, setShowScanner] = useState(false);
@@ -26,6 +26,13 @@ export const LandingScreen = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  useEffect(() => {
+    if (lastHardwareMessage?.startsWith('RFID_DETECTED: ')) {
+      const tag = lastHardwareMessage.replace('RFID_DETECTED: ', '').trim();
+      handleScan(tag);
+    }
+  }, [lastHardwareMessage]);
 
   const handleFirstAid = () => {
     navigate('/dispensing', { state: { isFirstAid: true } });

@@ -269,7 +269,7 @@ export async function sendCommand(command: string) {
   }
 }
 
-function simulateInbound(msg: string) {
+export function simulateInbound(msg: string) {
   dispatchMessage(msg);
 }
 

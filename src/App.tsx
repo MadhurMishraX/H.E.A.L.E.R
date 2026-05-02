@@ -13,6 +13,7 @@ import {
 } from './screens';
 import { Loader2 } from 'lucide-react';
 import { initSerial, onMessage } from './utils/serialComm';
+import { SimulationControls } from './components/SimulationControls';
 
 const MainLayout = () => {
   const { setCurrentPatient, setCurrentSession } = useAppContext();
@@ -50,6 +51,8 @@ const MainLayout = () => {
         <Route path="/admin" element={<AdminLoginScreen />} />
         <Route path="/admin/dashboard" element={<AdminDashboardScreen />} />
       </Routes>
+
+      <SimulationControls />
     </div>
   );
 };

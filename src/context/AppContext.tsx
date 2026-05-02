@@ -5,7 +5,8 @@ import {
   onConnectionStatus, 
   onMessage, 
   getHardwareConfig, 
-  getConnectionStatus 
+  getConnectionStatus,
+  simulateInbound
 } from '../utils/serialComm';
 
 type Language = 'en' | 'hi';
@@ -29,6 +30,7 @@ interface AppContextType {
   reconnect: () => Promise<void>;
   setIsHardwareConnected: (connected: boolean) => void;
   setHwError: (error: string | null) => void;
+  simulateRFID: (tagId?: string) => void;
   t: (path: string) => string;
 }
 
@@ -80,6 +82,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await initSerial();
   }, []);
 
+  const simulateRFID = useCallback((tagId?: string) => {
+    const id = tagId || "45 8B 1F 2D"; // Default test tag
+    simulateInbound(`RFID_DETECTED: ${id}`);
+  }, []);
+
   // Simple translation helper t('landing.title')
   const t = (path: string): string => {
     const keys = path.split('.');
@@ -108,6 +115,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       reconnect,
       setIsHardwareConnected: (connected: boolean) => setHwStatus(connected ? 'connected' : 'disconnected'),
       setHwError,
+      simulateRFID,
       t
     }}>
       {children}

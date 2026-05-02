@@ -35,4 +35,27 @@ export async function seedDatabase(): Promise<void> {
     { compartment_number: 3, medicine_name: 'ORS Electral', current_count: 50, low_stock_threshold: 5, last_updated: new Date().toISOString() },
     { compartment_number: 4, medicine_name: 'Clotrimazole 1% Cream', current_count: 50, low_stock_threshold: 5, last_updated: new Date().toISOString() },
   ]);
+
+  await db.patients.bulkAdd([
+    {
+      name: 'John Doe',
+      age: 45,
+      gender: 'Male',
+      email: 'john@example.com',
+      password: 'password123',
+      qr_code: '45 8B 1F 2D',
+      language_preference: 'en',
+      created_at: new Date().toISOString()
+    },
+    {
+      name: 'Jane Smith',
+      age: 28,
+      gender: 'Female',
+      email: 'jane@example.com',
+      password: 'password123',
+      qr_code: 'A1 B2 C3 D4',
+      language_preference: 'hi',
+      created_at: new Date().toISOString()
+    }
+  ]);
 }
