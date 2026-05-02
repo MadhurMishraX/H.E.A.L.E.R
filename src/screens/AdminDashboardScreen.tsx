@@ -25,7 +25,12 @@ import {
   Activity,
   User as UserIcon,
   Plus,
-  Minus
+  Minus,
+  Wifi,
+  Usb,
+  Cpu,
+  RefreshCw,
+  X
 } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip, Legend,
@@ -46,9 +51,220 @@ import {
   getInventory
 } from '../services/dbService';
 import { getAllSettings, setSetting } from '../services/settingsService';
-import { sendCommand, onMessage } from '../utils/serialComm';
+import { sendCommand, onMessage, initSerial, updateHardwareConfig, getHardwareConfig, requestWebSerialPort } from '../utils/serialComm';
 import { sendQRCodeEmail } from '../services/emailService';
 import QRCode from 'qrcode';
+
+// --- Hardware Connection Modal ---
+const HardwareModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+  const { isHardwareConnected, setIsHardwareConnected, setHwError } = useAppContext();
+  const [config, setConfig] = useState(getHardwareConfig());
+  const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>(getConnectionStatus() === 'connected' ? 'connected' : 'idle');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [wifiUrl, setWifiUrl] = useState(config.url);
+
+  useEffect(() => {
+    // Sync with global status in case it changes externally
+    const unlisten = onConnectionStatus((newStatus, error) => {
+      if (newStatus === 'connected') {
+        setStatus('connected');
+        setIsHardwareConnected(true);
+        setHwError(null);
+        setTimeout(() => onClose(), 1500);
+      } else if (newStatus === 'error') {
+        setStatus('error');
+        setErrorMsg(error || 'Connection failed');
+        setIsHardwareConnected(false);
+        setHwError(error || 'Connection failed');
+      } else if (newStatus === 'connecting') {
+        setStatus('connecting');
+      } else {
+        setStatus('idle');
+      }
+    });
+
+    return () => unlisten();
+  }, [setIsHardwareConnected, setHwError, onClose]);
+
+  const handleConnect = async (type: 'usb' | 'wifi' | 'simulated') => {
+    setStatus('connecting');
+    setErrorMsg(null);
+    setHwError(null);
+    updateHardwareConfig(type, type === 'wifi' ? wifiUrl : undefined);
+    setConfig(getHardwareConfig());
+    
+    // Per instructions: clicking USB calls requestWebSerialPort directly (needs user gesture)
+    // WiFi and Simulated call initSerial (WiFi uses enteredUrl)
+    let res: any;
+    if (type === 'usb') {
+      res = await requestWebSerialPort();
+      if (res.success) {
+        // initSerial normally handles dispatching but requestWebSerialPort is a direct low level call
+        // We need to trigger the connected state
+        // Actually, initSerial handles dispatching, so let's call initSerial instead since we just updated config
+        // Wait, if it's USB, requestWebSerialPort IS the user gesture.
+        // Let's call initSerial() which will call requestWebSerialPort if type is usb.
+        res = await initSerial();
+      } else {
+        // Manually dispatch error if requestPort was cancelled or failed
+        setIsHardwareConnected(false);
+        setStatus('error');
+        setErrorMsg(res.error);
+        setHwError(res.error);
+      }
+    } else {
+      res = await initSerial();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={status === 'connecting' ? undefined : onClose}
+        className="absolute inset-0 bg-brand-navy/95 backdrop-blur-xl"
+      />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        className="relative w-full max-w-xl bg-[#0F1D32] border border-white/10 rounded-[32px] overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.6)]"
+      >
+        <div className="p-10">
+          <div className="flex justify-between items-start mb-10">
+            <div>
+              <h2 className="text-3xl font-bold text-white mb-2">Connect Hardware</h2>
+              <p className="text-text-muted">Link the medical kiosk to the motor controllers</p>
+            </div>
+            <button 
+              onClick={onClose} 
+              disabled={status === 'connecting'}
+              className="p-2 hover:bg-white/5 rounded-full text-text-muted transition-colors disabled:opacity-0"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          {status === 'error' && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+              className="mb-8 p-4 bg-brand-danger/10 border border-brand-danger/20 rounded-2xl flex items-center gap-4 text-brand-danger text-sm font-bold uppercase tracking-wider"
+            >
+              <AlertCircle size={20} className="shrink-0" />
+              <span className="flex-1">{errorMsg}</span>
+            </motion.div>
+          )}
+
+          {status === 'connected' && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+              className="mb-8 p-4 bg-brand-success/10 border border-brand-success/20 rounded-2xl flex items-center gap-4 text-brand-success text-sm font-bold uppercase tracking-wider"
+            >
+              <CheckCircle2 size={20} className="shrink-0" />
+              Connected Successfully! Closing...
+            </motion.div>
+          )}
+
+          <div className="grid grid-cols-1 gap-5">
+            {/* USB Option */}
+            <button 
+              onClick={() => handleConnect('usb')}
+              disabled={status === 'connecting' || status === 'connected'}
+              className={`group p-6 rounded-2xl border flex items-center gap-6 transition-all ${config.type === 'usb' && status === 'connected' ? 'bg-brand-primary/10 border-brand-primary' : 'bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/[0.08] disabled:hover:bg-white/5'}`}
+            >
+              <div className={`w-14 h-14 rounded-xl flex items-center justify-center transition-all ${config.type === 'usb' && status === 'connected' ? 'bg-brand-primary text-white' : 'bg-brand-navy text-text-muted group-hover:text-white'}`}>
+                <Usb size={28} />
+              </div>
+              <div className="text-left flex-1">
+                <h4 className="text-xl font-bold text-white mb-0.5">🔌 USB Connection</h4>
+                <p className="text-xs text-text-muted font-medium">Connect via USB cable to Arduino Mega</p>
+              </div>
+              {status === 'connecting' && config.type === 'usb' ? (
+                <Loader2 className="animate-spin text-brand-primary" size={20} />
+              ) : config.type === 'usb' && status === 'connected' ? (
+                <CheckCircle2 className="text-brand-success" size={20} />
+              ) : (
+                <ChevronRight size={20} className="text-white/10 group-hover:text-white/30" />
+              )}
+            </button>
+
+            {/* WiFi Option */}
+            <div className={`p-6 rounded-2xl border transition-all ${config.type === 'wifi' && status === 'connected' ? 'bg-brand-secondary/10 border-brand-secondary' : 'bg-white/5 border-white/5 hover:border-white/10'}`}>
+              <div className="flex items-center gap-6 mb-6">
+                <div className={`w-14 h-14 rounded-xl flex items-center justify-center transition-all ${config.type === 'wifi' && status === 'connected' ? 'bg-brand-secondary text-brand-navy' : 'bg-brand-navy text-text-muted'}`}>
+                  <Wifi size={28} />
+                </div>
+                <div className="text-left flex-1">
+                  <h4 className="text-xl font-bold text-white mb-0.5">📡 WiFi Network</h4>
+                  <p className="text-xs text-text-muted font-medium">Connect to ESP32 over WiFi</p>
+                </div>
+                {status === 'connecting' && config.type === 'wifi' ? (
+                  <Loader2 className="animate-spin text-brand-secondary" size={20} />
+                ) : config.type === 'wifi' && status === 'connected' ? (
+                  <CheckCircle2 className="text-brand-success" size={20} />
+                ) : null}
+              </div>
+              
+              <div className="flex gap-3">
+                <input 
+                  type="text" 
+                  value={wifiUrl}
+                  onChange={(e) => setWifiUrl(e.target.value)}
+                  placeholder="http://192.168.1.x"
+                  disabled={status === 'connecting' || status === 'connected'}
+                  className="flex-1 h-12 bg-brand-navy border border-white/10 rounded-xl px-4 text-white text-sm font-mono placeholder:text-white/20 focus:outline-none focus:border-brand-secondary transition-colors disabled:opacity-50"
+                />
+                <button 
+                  onClick={() => handleConnect('wifi')}
+                  disabled={status === 'connecting' || status === 'connected'}
+                  className="px-6 bg-brand-secondary text-brand-navy rounded-xl font-bold uppercase tracking-widest text-xs flex items-center gap-2 hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100"
+                >
+                  {status === 'connecting' && config.type === 'wifi' ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+                  Connect
+                </button>
+              </div>
+            </div>
+
+            {/* Simulation Option */}
+            <button 
+              onClick={() => handleConnect('simulated')}
+              disabled={status === 'connecting' || status === 'connected'}
+              className={`group p-6 rounded-2xl border flex items-center gap-6 transition-all ${config.type === 'simulated' && status === 'connected' ? 'bg-white/10 border-white/30' : 'bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/[0.08] disabled:hover:bg-white/5'}`}
+            >
+              <div className={`w-14 h-14 rounded-xl flex items-center justify-center transition-all ${config.type === 'simulated' && status === 'connected' ? 'bg-white/20 text-white' : 'bg-brand-navy text-text-muted group-hover:text-white'}`}>
+                <Cpu size={28} />
+              </div>
+              <div className="text-left flex-1">
+                <h4 className="text-xl font-bold text-white mb-0.5">🖥️ Simulation</h4>
+                <p className="text-xs text-text-muted font-medium">Run without hardware (demo mode)</p>
+              </div>
+              {status === 'connecting' && config.type === 'simulated' ? (
+                <Loader2 className="animate-spin text-white" size={20} />
+              ) : config.type === 'simulated' && status === 'connected' ? (
+                <CheckCircle2 className="text-brand-success" size={20} />
+              ) : (
+                <ChevronRight size={20} className="text-white/10 group-hover:text-white/30" />
+              )}
+            </button>
+          </div>
+        </div>
+        
+        {status === 'connecting' ? (
+          <div className="bg-brand-navy/50 p-6 flex items-center justify-center gap-3 text-xs font-bold text-brand-secondary uppercase tracking-[0.2em] border-t border-white/5">
+            <Loader2 className="animate-spin" size={14} />
+            Establishing Handshake...
+          </div>
+        ) : (
+          <div className="bg-white/5 p-6 text-center text-[10px] text-text-muted font-bold uppercase tracking-[0.2em] border-t border-white/5">
+            Hardware handshake required for dispensing
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+};
 
 // --- Tab Sub-Components ---
 
@@ -830,9 +1046,23 @@ const SettingsTab = () => {
 
 export const AdminDashboardScreen = () => {
   const navigate = useNavigate();
+  const { isHardwareConnected, setIsHardwareConnected, setHwError } = useAppContext();
   const [activeTab, setActiveTab] = useState<'compartments'|'inventory'|'patients'|'analytics'|'settings'>('compartments');
   const [inventory, setInventory] = useState([]);
   const [serialLog, setSerialLog] = useState<{ timestamp: string; type: 'IN' | 'OUT'; msg: string }[]>([]);
+  const [showHwModal, setShowHwModal] = useState(false);
+  const [hwStatus, setHwStatus] = useState(getConnectionStatus());
+  const [hwConfig, setHwConfig] = useState(getHardwareConfig());
+
+  useEffect(() => {
+    const unlisten = onConnectionStatus((status, error) => {
+      setHwStatus(status);
+      setHwConfig(getHardwareConfig());
+      setIsHardwareConnected(status === 'connected');
+      if (error) setHwError(error);
+    });
+    return () => unlisten();
+  }, [setIsHardwareConnected, setHwError]);
 
   const refreshInventory = () => {
     getInventory().then(setInventory as any);
@@ -857,7 +1087,10 @@ export const AdminDashboardScreen = () => {
 
   return (
     <div className="w-full h-full bg-brand-navy flex flex-col overflow-y-auto font-sans text-text-primary pl-8 pr-8 pb-8 pt-6 scrollbar-thin scrollbar-thumb-brand-primary">
-      
+      <AnimatePresence>
+        {showHwModal && <HardwareModal isOpen={showHwModal} onClose={() => setShowHwModal(false)} />}
+      </AnimatePresence>
+
       {/* Top Bar */}
       <div className="flex justify-between items-center mb-8 z-30">
         <div className="flex items-center gap-4">
@@ -870,14 +1103,32 @@ export const AdminDashboardScreen = () => {
           </div>
         </div>
         
-        <motion.button 
-          whileTap={{ scale: 0.95 }}
-          onClick={handleLogout}
-          className="h-12 px-6 bg-[rgba(255,82,82,0.1)] hover:bg-[rgba(255,82,82,0.2)] text-brand-danger border border-brand-danger/30 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-all"
-        >
-          <LogOut size={16} />
-          Logout
-        </motion.button>
+        <div className="flex items-center gap-6">
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setShowHwModal(true)}
+            className={`h-12 px-6 rounded-full flex items-center gap-3 border transition-all ${
+              hwStatus === 'connected' ? 'bg-brand-success/10 border-brand-success text-brand-success' : 
+              hwStatus === 'connecting' ? 'bg-brand-warning/10 border-brand-warning text-brand-warning shadow-[0_0_15px_rgba(255,179,0,0.2)] animate-pulse' :
+              'bg-brand-danger/10 border-brand-danger text-brand-danger shadow-[0_0_15px_rgba(255,82,82,0.2)]'
+            }`}
+          >
+            <Activity size={18} />
+            <span className="text-xs font-bold uppercase tracking-widest whitespace-nowrap">
+              Hardware {hwStatus === 'connected' ? 'Online' : hwStatus === 'connecting' ? 'Connecting...' : 'Offline'}
+              <span className="ml-2 opacity-60 font-medium lowercase">({hwConfig.type})</span>
+            </span>
+          </motion.button>
+
+          <motion.button 
+            whileTap={{ scale: 0.95 }}
+            onClick={handleLogout}
+            className="h-12 px-6 bg-[rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.1)] text-text-muted border border-white/10 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-all"
+          >
+            <LogOut size={16} />
+            Logout
+          </motion.button>
+        </div>
       </div>
 
       {/* Tab Navigation */}

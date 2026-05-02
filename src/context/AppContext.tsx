@@ -11,10 +11,12 @@ interface AppContextType {
   currentSession: Session | null;
   language: Language;
   isHardwareConnected: boolean;
+  hwError: string | null;
   setLanguage: (lang: Language) => void;
   setCurrentPatient: (patient: Patient | null) => void;
   setCurrentSession: (session: Session | null) => void;
   setIsHardwareConnected: (connected: boolean) => void;
+  setHwError: (error: string | null) => void;
   t: (path: string) => string;
 }
 
@@ -25,6 +27,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
   const [language, setLanguage] = useState<Language>('en');
   const [isHardwareConnected, setIsHardwareConnected] = useState<boolean>(false);
+  const [hwError, setHwError] = useState<string | null>(null);
 
   // Simple translation helper t('landing.title')
   const t = (path: string): string => {
@@ -45,10 +48,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       currentSession,
       language,
       isHardwareConnected,
+      hwError,
       setLanguage,
       setCurrentPatient,
       setCurrentSession,
       setIsHardwareConnected,
+      setHwError,
       t
     }}>
       {children}

@@ -4,6 +4,7 @@
  */
 
 type ConnectionType = 'usb' | 'wifi' | 'simulated';
+type HardwareStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 let port: any = null;
 let writer: any = null;
@@ -12,15 +13,46 @@ let keepReading = true;
 let readPromise: Promise<void> | null = null;
 let wifiPollInterval: number | null = null;
 
+let _connStatus: HardwareStatus = 'disconnected';
 let _connType: ConnectionType = (localStorage.getItem('hw_conn_type') as ConnectionType) || 'simulated';
-let _wifiUrl: string = localStorage.getItem('hw_conn_url') || 'http://healer-esp32.local';
+let _wifiUrl: string = localStorage.getItem('hw_conn_url') || '';
 let messageCallbacks: Set<(msg: string) => void> = new Set();
+let statusCallbacks: Set<(status: HardwareStatus, error?: string) => void> = new Set();
+let lastError: string | null = null;
+
+export function getHardwareStatus() {
+  return {
+    type: _connType,
+    url: _wifiUrl,
+    connected: _connStatus === 'connected',
+    status: _connStatus,
+    error: lastError
+  };
+}
+
+export function getConnectionStatus() {
+  return _connStatus;
+}
 
 export function onMessage(callback: (msg: string) => void) {
   messageCallbacks.add(callback);
   return () => {
     messageCallbacks.delete(callback);
   };
+}
+
+export function onConnectionStatus(callback: (status: HardwareStatus, error?: string) => void) {
+  statusCallbacks.add(callback);
+  return () => {
+    statusCallbacks.delete(callback);
+  };
+}
+
+function dispatchConnectionStatus(status: HardwareStatus, error?: string) {
+  _connStatus = status;
+  if (error) lastError = error;
+  console.log(`HARDWARE STATUS: ${status}${error ? ` (${error})` : ''}`);
+  statusCallbacks.forEach(cb => cb(status, error));
 }
 
 function dispatchMessage(msg: string) {
@@ -31,10 +63,11 @@ function dispatchMessage(msg: string) {
 export function updateHardwareConfig(type: ConnectionType, url?: string) {
   _connType = type;
   localStorage.setItem('hw_conn_type', type);
-  if (url) {
+  if (url !== undefined) {
     _wifiUrl = url;
     localStorage.setItem('hw_conn_url', url);
   }
+  lastError = null;
 }
 
 export function getHardwareConfig() {
@@ -42,28 +75,70 @@ export function getHardwareConfig() {
 }
 
 export async function initSerial() {
-  if (_connType === 'wifi') {
-    return await initWifi();
-  } else if (_connType === 'usb') {
-    return await initWebSerial();
-  } else {
-    console.log("Serial Initialized (Simulated)");
-    setTimeout(() => simulateInbound("ARDUINO_READY"), 1000);
-    return { success: true };
+  lastError = null;
+  dispatchConnectionStatus('connecting');
+
+  try {
+    if (_connType === 'wifi') {
+      const res = await initWifi();
+      if (res.success) {
+        dispatchConnectionStatus('connected');
+      } else {
+        dispatchConnectionStatus('error', res.error);
+      }
+      return res;
+    } else if (_connType === 'usb') {
+      // Per instructions: initSerial for USB should call requestWebSerialPort directly
+      // Note: This may fail if called without user gesture (e.g. on page load)
+      const res = await requestWebSerialPort();
+      if (res.success) {
+        dispatchConnectionStatus('connected');
+      } else {
+        dispatchConnectionStatus('error', res.error);
+      }
+      return res;
+    } else {
+      console.log("Serial Initialized (Simulated)");
+      _connStatus = 'connected';
+      dispatchConnectionStatus('connected');
+      setTimeout(() => simulateInbound("ARDUINO_READY"), 1000);
+      return { success: true };
+    }
+  } catch (err: any) {
+    const msg = err.message || 'Unknown connection error';
+    dispatchConnectionStatus('error', msg);
+    return { success: false, error: msg };
   }
 }
 
 async function initWifi() {
+  if (!_wifiUrl) {
+    return { success: false, error: 'WiFi URL is required' };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
   try {
-    const res = await fetch(`${_wifiUrl}/ping`, { method: 'GET', mode: 'cors' });
+    const res = await fetch(`${_wifiUrl}/ping`, { 
+      method: 'GET', 
+      mode: 'cors',
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
     if (res.ok) {
       startWifiPolling();
       return { success: true };
     }
-    return { success: false, error: 'Ping failed' };
+    return { success: false, error: 'WiFi Ping failed (Station offline)' };
   } catch (err: any) {
+    clearTimeout(timeoutId);
     console.error("WiFi init failed:", err);
-    return { success: false, error: err.message || 'Connection refused' };
+    if (err.name === 'AbortError') {
+      return { success: false, error: 'WiFi connection timed out (5s)' };
+    }
+    return { success: false, error: err.message || 'WiFi Connection refused' };
   }
 }
 
