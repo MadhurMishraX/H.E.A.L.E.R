@@ -14,6 +14,7 @@ import {
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { motion, AnimatePresence } from 'motion/react';
 import { loginPatient, loginPatientByQR, getPatientFullHistory } from '../services/dbService';
+import { getHardwareConfig, updateHardwareConfig, requestWebSerialPort } from '../utils/serialComm';
 
 export const LandingScreen = () => {
   const { t, language, setLanguage, setCurrentPatient, isHardwareConnected } = useAppContext();
@@ -366,23 +367,82 @@ export const LandingScreen = () => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="glass-card w-full max-w-lg p-10 text-center border-l-4 border-l-brand-danger"
+              className={`glass-card w-full max-w-lg p-10 relative border-l-4 ${isHardwareConnected ? 'border-l-brand-success' : 'border-l-brand-danger'}`}
             >
-              <div className="w-20 h-20 bg-brand-danger/10 text-brand-danger rounded-full flex items-center justify-center mx-auto mb-6">
-                <Settings size={40} />
+              <button 
+                onClick={() => setShowStatusModal(false)}
+                className="absolute top-6 right-6 w-10 h-10 bg-white/5 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
+              >
+                <X size={20} />
+              </button>
+              
+              <div className="flex items-center gap-4 mb-6">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${isHardwareConnected ? 'bg-brand-success/10 text-brand-success' : 'bg-brand-danger/10 text-brand-danger'}`}>
+                  <Settings size={32} />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold">Hardware Connection</h2>
+                  <p className={isHardwareConnected ? "text-brand-success" : "text-brand-danger"}>
+                    {isHardwareConnected ? 'Connected & Ready' : 'Offline / Disconnected'}
+                  </p>
+                </div>
               </div>
-              <h2 className="text-3xl font-bold mb-4">Hardware Offline</h2>
-              <p className="text-text-secondary mb-8">
-                The application could not detect the Arduino hardware via USB.
-              </p>
-              <div className="bg-brand-card p-6 rounded-xl text-left border border-white/5 mb-8">
-                <h3 className="font-bold text-text-primary mb-3 text-sm tracking-widest uppercase">Troubleshooting:</h3>
-                <ul className="list-disc pl-5 text-text-muted space-y-2 text-sm">
-                  <li>Ensure the USB cable is securely connected.</li>
-                  <li>Check if the Arduino Mega is powered on.</li>
-                  <li>Verify browser supports Web Serial API.</li>
-                  <li>Restart the app or accept USB permissions.</li>
-                </ul>
+
+              <div className="space-y-6 mb-8 mt-8">
+                <div className="space-y-3">
+                  <label className="text-sm font-bold uppercase tracking-wider text-text-secondary">Connection Type</label>
+                  <div className="flex gap-2">
+                    {(['usb', 'wifi', 'simulated'] as const).map(type => (
+                      <button
+                        key={type}
+                        onClick={() => {
+                          const config = getHardwareConfig();
+                          updateHardwareConfig(type, config.url);
+                          window.location.reload(); // Reload to re-init
+                        }}
+                        className={`flex-1 py-3 rounded-xl font-bold transition-colors ${getHardwareConfig().type === type ? 'bg-brand-primary text-white border-2 border-brand-primary' : 'bg-brand-card text-text-secondary border-2 border-transparent hover:bg-white/5'}`}
+                      >
+                        {type.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {getHardwareConfig().type === 'wifi' && (
+                  <div className="bg-brand-card p-5 rounded-xl border border-white/5 space-y-3">
+                    <label className="text-sm font-bold uppercase tracking-wider text-text-secondary">Wi-Fi ESP32 Address</label>
+                    <input 
+                      type="text" 
+                      defaultValue={getHardwareConfig().url}
+                      onBlur={(e) => {
+                         updateHardwareConfig('wifi', e.target.value);
+                         window.location.reload();
+                      }}
+                      className="w-full bg-brand-navy border border-white/10 rounded-lg p-3 text-white focus:border-brand-primary outline-none"
+                      placeholder="http://192.168.1.x or healer-esp32.local"
+                    />
+                    <p className="text-xs text-text-muted">Requires restarting connection. Be sure to include http://</p>
+                  </div>
+                )}
+
+                {getHardwareConfig().type === 'usb' && !isHardwareConnected && (
+                  <div className="bg-brand-card p-5 rounded-xl border border-white/5">
+                    <button 
+                      onClick={async () => {
+                         const res = await requestWebSerialPort();
+                         if(res.success) {
+                            window.location.reload();
+                         } else {
+                            alert("Failed to connect: " + res.error);
+                         }
+                      }}
+                      className="w-full py-3 bg-brand-primary hover:bg-brand-primary-light text-white rounded-lg font-bold transition-colors"
+                    >
+                      Connect USB Port
+                    </button>
+                  </div>
+                )}
+
               </div>
               <motion.button 
                 whileTap={{ scale: 0.96 }}
