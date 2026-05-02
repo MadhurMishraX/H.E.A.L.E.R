@@ -15,32 +15,9 @@ import { Loader2 } from 'lucide-react';
 import { initSerial, onMessage } from './utils/serialComm';
 
 const MainLayout = () => {
-  const { t, setCurrentPatient, setCurrentSession, setIsHardwareConnected, setHwError } = useAppContext();
+  const { setCurrentPatient, setCurrentSession } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
-
-  useEffect(() => {
-    let unmounted = false;
-    initSerial().then((res: any) => {
-      if (!unmounted) {
-        setIsHardwareConnected(res.success);
-        if (!res.success) setHwError(res.error);
-      }
-    });
-    
-    // Also update if we hear ARDUINO_READY
-    const unlisten = onMessage((msg) => {
-      if (!unmounted && msg.trim() === "ARDUINO_READY") {
-        setIsHardwareConnected(true);
-        setHwError(null);
-      }
-    });
-
-    return () => {
-      unmounted = true;
-      unlisten();
-    };
-  }, [setIsHardwareConnected]);
 
   useEffect(() => {
     // Intercept back button for Android Kiosk

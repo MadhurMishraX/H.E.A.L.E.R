@@ -57,7 +57,7 @@ import QRCode from 'qrcode';
 
 // --- Hardware Connection Modal ---
 const HardwareModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
-  const { isHardwareConnected, setIsHardwareConnected, setHwError } = useAppContext();
+  const { hwStatus, setIsHardwareConnected, setHwError } = useAppContext();
   const [config, setConfig] = useState(getHardwareConfig());
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>(getConnectionStatus() === 'connected' ? 'connected' : 'idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -1046,23 +1046,11 @@ const SettingsTab = () => {
 
 export const AdminDashboardScreen = () => {
   const navigate = useNavigate();
-  const { isHardwareConnected, setIsHardwareConnected, setHwError } = useAppContext();
+  const { hwStatus, hwMode, hwError } = useAppContext();
   const [activeTab, setActiveTab] = useState<'compartments'|'inventory'|'patients'|'analytics'|'settings'>('compartments');
   const [inventory, setInventory] = useState([]);
   const [serialLog, setSerialLog] = useState<{ timestamp: string; type: 'IN' | 'OUT'; msg: string }[]>([]);
   const [showHwModal, setShowHwModal] = useState(false);
-  const [hwStatus, setHwStatus] = useState(getConnectionStatus());
-  const [hwConfig, setHwConfig] = useState(getHardwareConfig());
-
-  useEffect(() => {
-    const unlisten = onConnectionStatus((status, error) => {
-      setHwStatus(status);
-      setHwConfig(getHardwareConfig());
-      setIsHardwareConnected(status === 'connected');
-      if (error) setHwError(error);
-    });
-    return () => unlisten();
-  }, [setIsHardwareConnected, setHwError]);
 
   const refreshInventory = () => {
     getInventory().then(setInventory as any);
@@ -1116,7 +1104,7 @@ export const AdminDashboardScreen = () => {
             <Activity size={18} />
             <span className="text-xs font-bold uppercase tracking-widest whitespace-nowrap">
               Hardware {hwStatus === 'connected' ? 'Online' : hwStatus === 'connecting' ? 'Connecting...' : 'Offline'}
-              <span className="ml-2 opacity-60 font-medium lowercase">({hwConfig.type})</span>
+              <span className="ml-2 opacity-60 font-medium lowercase">({hwMode})</span>
             </span>
           </motion.button>
 

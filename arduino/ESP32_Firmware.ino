@@ -26,8 +26,9 @@
 #include <ESPmDNS.h>
 
 // --- Configuration ---
-const char* WIFI_SSID = "your_ssid_here";
-const char* WIFI_PASSWORD = "your_password_here";
+// TODO: Set your WiFi credentials here. You MUST flash this to the ESP32 for WiFi mode to work.
+const char* WIFI_SSID = "YOUR_SSID";
+const char* WIFI_PASSWORD = "YOUR_PASSWORD";
 const char* MDNS_HOSTNAME = "healer-esp32";
 
 const int TRIGGER_PIN = 13;
@@ -128,11 +129,19 @@ void setup() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("WiFi Connected!");
+    Serial.println("IP:" + WiFi.localIP().toString());
     MDNS.begin(MDNS_HOSTNAME);
     
     server.on("/ping", HTTP_GET, []() {
       server.sendHeader("Access-Control-Allow-Origin", "*");
       server.send(200, "text/plain", "ARDUINO_READY");
+    });
+
+    server.on("/status", HTTP_GET, []() {
+      server.sendHeader("Access-Control-Allow-Origin", "*");
+      String json = "{\"status\":\"ready\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"heap\":" + String(ESP.getFreeHeap()) + "}";
+      server.send(200, "application/json", json);
     });
 
     server.on("/command", HTTP_GET, []() {
@@ -159,7 +168,24 @@ void setup() {
     });
 
     server.on("/photos", HTTP_GET, handleListPhotos);
-    server.onNotFound(handlePhotoRequest);
+    
+    server.onNotFound([]() {
+      if (server.method() == HTTP_OPTIONS) {
+        server.sendHeader("Access-Control-Allow-Origin", "*");
+        server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        server.sendHeader("Access-Control-Allow-Headers", "*");
+        server.send(204);
+      } else {
+        // Handle photo requests or 404
+        String uri = server.uri();
+        if (uri.startsWith("/photos/")) {
+          handlePhotoRequest();
+        } else {
+          server.send(404, "text/plain", "Not Found");
+        }
+      }
+    });
+
     server.begin();
   }
 }

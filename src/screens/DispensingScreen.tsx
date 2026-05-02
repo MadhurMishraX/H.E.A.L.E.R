@@ -15,7 +15,7 @@ import { initSerial, sendCommand, onMessage, closeSerial } from '../utils/serial
 import { dispense, addAdminLog } from '../services/dbService';
 
 export const DispensingScreen = () => {
-  const { t, currentPatient } = useAppContext();
+  const { t, currentPatient, hwStatus, hwMode } = useAppContext();
   const location = useLocation();
   const navigate = useNavigate();
   const params = location.state || {};
@@ -44,7 +44,13 @@ export const DispensingScreen = () => {
 
     let unlistenFn: (() => void) | undefined;
     const startFlow = async () => {
-      // 1. Init Serial - omitted, managed by App.tsx
+      // 1. Check Hardware Connection
+      if (hwStatus !== 'connected' && hwMode !== 'simulated') {
+        setHardwareError(true);
+        // Dispatching a mock error log
+        addAdminLog(`ERROR: Dispensing attempted while hardware is ${hwStatus}`).catch(() => {});
+        return;
+      }
 
       // Check if still mounted after async init
       if (timerRef.current === undefined) return; 

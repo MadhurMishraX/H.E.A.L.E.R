@@ -17,7 +17,8 @@ import { loginPatient, loginPatientByQR, getPatientFullHistory } from '../servic
 import { getHardwareConfig, updateHardwareConfig, requestWebSerialPort } from '../utils/serialComm';
 
 export const LandingScreen = () => {
-  const { t, language, setLanguage, setCurrentPatient, isHardwareConnected } = useAppContext();
+  const { t, language, setLanguage, setCurrentPatient, hwStatus, hwMode } = useAppContext();
+  const isHardwareConnected = hwStatus === 'connected';
   const navigate = useNavigate();
   const [showScanner, setShowScanner] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -98,16 +99,26 @@ export const LandingScreen = () => {
       {/* Top Right Hardware Status */}
       <motion.button 
         whileTap={{ scale: 0.95 }}
-        onClick={() => !isHardwareConnected && setShowStatusModal(true)}
-        className="absolute top-10 right-10 flex items-center gap-3 bg-[rgba(15,32,64,0.6)] backdrop-blur-md px-6 py-4 rounded-full border border-[rgba(33,150,243,0.2)] z-20"
+        onClick={() => setShowStatusModal(true)}
+        className={`absolute top-10 right-10 flex items-center gap-3 bg-[rgba(15,32,64,0.6)] backdrop-blur-md px-6 py-4 rounded-full border z-20 transition-colors ${
+          hwStatus === 'connected' ? 'border-[rgba(33,150,243,0.2)] hover:bg-[rgba(15,32,64,0.8)]' : 
+          hwStatus === 'connecting' ? 'border-[rgba(255,179,0,0.2)] hover:bg-[rgba(15,32,64,0.8)]' :
+          'border-[rgba(255,82,82,0.2)] hover:bg-[rgba(255,82,82,0.1)]'
+        }`}
       >
         <motion.div 
-          animate={isHardwareConnected ? { opacity: [1, 0.3, 1] } : {}}
+          animate={hwStatus === 'connected' ? { opacity: [1, 0.3, 1] } : {}}
           transition={{ repeat: Infinity, duration: 2 }}
-          className={`w-3 h-3 rounded-full ${isHardwareConnected ? 'bg-brand-success shadow-[0_0_12px_var(--color-brand-success)]' : 'bg-brand-danger shadow-[0_0_12px_var(--color-brand-danger)] animate-pulse'}`} 
+          className={`w-3 h-3 rounded-full ${
+            hwStatus === 'connected' ? 'bg-brand-success shadow-[0_0_12px_var(--color-brand-success)]' : 
+            hwStatus === 'connecting' ? 'bg-brand-warning shadow-[0_0_12px_var(--color-brand-warning)] animate-pulse' :
+            'bg-brand-danger shadow-[0_0_12px_var(--color-brand-danger)] animate-pulse'
+          }`} 
         />
-        <span className="text-sm font-bold uppercase tracking-[1.5px] text-text-secondary">
-          {isHardwareConnected ? 'Hardware Ready' : 'Hardware Offline'}
+        <span className="text-sm font-bold uppercase tracking-[1.5px] text-text-secondary whitespace-nowrap">
+          {hwStatus === 'connected' ? `Hardware Ready (${hwMode})` : 
+           hwStatus === 'connecting' ? 'Connecting...' : 
+           'Hardware Offline'}
         </span>
       </motion.button>
 
