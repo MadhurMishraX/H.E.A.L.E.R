@@ -63,7 +63,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
 
     // 3. Auto-Init on start
-    initSerial();
+    initSerial().then((res: any) => {
+      if (res && res.success === false && res.error === 'NEEDS_USER_GESTURE') {
+        setHwStatus('disconnected');
+      }
+    });
 
     return () => {
       unlistenStatus();

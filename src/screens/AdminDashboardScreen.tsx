@@ -86,35 +86,30 @@ const HardwareModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => vo
     return () => unlisten();
   }, [setIsHardwareConnected, setHwError, onClose]);
 
-  const handleConnect = async (type: 'usb' | 'wifi' | 'simulated') => {
+  const handleUSBConnect = async () => {
+    setStatus('connecting');
+    setErrorMsg(null);
+    setHwError(null);
+    const res = await requestWebSerialPort();
+    if (res.success) {
+      updateHardwareConfig('usb');
+      setConfig(getHardwareConfig());
+      await initSerial();
+    } else {
+      setIsHardwareConnected(false);
+      setStatus('error');
+      setErrorMsg(res.error);
+      setHwError(res.error);
+    }
+  };
+
+  const handleConnect = async (type: 'wifi' | 'simulated') => {
     setStatus('connecting');
     setErrorMsg(null);
     setHwError(null);
     updateHardwareConfig(type, type === 'wifi' ? wifiUrl : undefined);
     setConfig(getHardwareConfig());
-    
-    // Per instructions: clicking USB calls requestWebSerialPort directly (needs user gesture)
-    // WiFi and Simulated call initSerial (WiFi uses enteredUrl)
-    let res: any;
-    if (type === 'usb') {
-      res = await requestWebSerialPort();
-      if (res.success) {
-        // initSerial normally handles dispatching but requestWebSerialPort is a direct low level call
-        // We need to trigger the connected state
-        // Actually, initSerial handles dispatching, so let's call initSerial instead since we just updated config
-        // Wait, if it's USB, requestWebSerialPort IS the user gesture.
-        // Let's call initSerial() which will call requestWebSerialPort if type is usb.
-        res = await initSerial();
-      } else {
-        // Manually dispatch error if requestPort was cancelled or failed
-        setIsHardwareConnected(false);
-        setStatus('error');
-        setErrorMsg(res.error);
-        setHwError(res.error);
-      }
-    } else {
-      res = await initSerial();
-    }
+    await initSerial();
   };
 
   if (!isOpen) return null;
@@ -170,7 +165,7 @@ const HardwareModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => vo
           <div className="grid grid-cols-1 gap-5">
             {/* USB Option */}
             <button 
-              onClick={() => handleConnect('usb')}
+              onClick={handleUSBConnect}
               disabled={status === 'connecting' || status === 'connected'}
               className={`group p-6 rounded-2xl border flex items-center gap-6 transition-all ${config.type === 'usb' && status === 'connected' ? 'bg-brand-primary/10 border-brand-primary' : 'bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/[0.08] disabled:hover:bg-white/5'}`}
             >

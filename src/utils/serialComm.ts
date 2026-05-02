@@ -88,13 +88,13 @@ export async function initSerial() {
       }
       return res;
     } else if (_connType === 'usb') {
-      // Per instructions: initSerial for USB should call requestWebSerialPort directly
-      // Note: This may fail if called without user gesture (e.g. on page load)
-      const res = await requestWebSerialPort();
+      const res = await initWebSerial();
       if (res.success) {
         dispatchConnectionStatus('connected');
       } else {
-        dispatchConnectionStatus('error', res.error);
+        if (res.error !== 'NEEDS_USER_GESTURE') {
+          dispatchConnectionStatus('error', res.error);
+        }
       }
       return res;
     } else {
@@ -184,7 +184,7 @@ async function initWebSerial() {
       readPromise = readUntilClosed();
       return { success: true };
     }
-    return { success: false, error: 'No authorized port found. Click connect in settings.' };
+    return { success: false, error: 'NEEDS_USER_GESTURE' };
   } catch (err: any) {
     console.error("Failed to init Web Serial:", err);
     port = null;
