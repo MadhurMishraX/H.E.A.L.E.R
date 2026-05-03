@@ -1,280 +1,242 @@
 /**
- * Utility for Serial Communication with Arduino.
- * Uses Web Serial API.
+ * H.E.A.L.E.R - Dual Mode Serial Communication (USB & Bluetooth)
+ * -------------------------------------------------------------
  */
 
-let port: SerialPort | null = null;
-let writer: WritableStreamDefaultWriter<any> | null = null;
-let reader: ReadableStreamDefaultReader<any> | null = null;
+export type ConnectionType = 'usb' | 'bluetooth' | 'none';
+export type HardwareStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+let port: any = null;
+let reader: any = null;
+let writer: any = null;
+let bleDevice: BluetoothDevice | null = null;
+let bleCharacteristic: BluetoothRemoteGATTCharacteristic | null = null;
+
 let keepReading = true;
-let communicationMode: 'serial' | 'wifi' = 'serial';
-let espIp = localStorage.getItem('healer_esp_ip') || 'healer.local'; 
-let wifiPollingInterval: NodeJS.Timeout | null = null;
-let isScanning = false;
+let _connType: ConnectionType = 'none';
+let _status: HardwareStatus = 'disconnected';
 
-export function setCommunicationMode(mode: 'serial' | 'wifi', ip?: string) {
-  communicationMode = mode;
-  if (ip) {
-    espIp = ip;
-    localStorage.setItem('healer_esp_ip', ip);
-  }
-  console.log(`[Comm] Mode: ${mode} | Target: ${espIp}`);
+// BLE UUIDs (Must match ESP32)
+const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const RX_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const TX_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
-  // Handle Polling Lifecycle
-  if (mode === 'wifi') {
-    if (!wifiPollingInterval) {
-      console.log("[Comm] Starting WiFi Polling (200ms)...");
-      wifiPollingInterval = setInterval(pollWiFiMessages, 200); 
-    }
-  } else {
-    if (wifiPollingInterval) {
-      clearInterval(wifiPollingInterval);
-      wifiPollingInterval = null;
-      console.log("[Comm] Stopped WiFi Polling.");
-    }
+/**
+ * Initialize Hardware Connection (Auto-reconnect for USB)
+ */
+export async function initHardware(type: ConnectionType): Promise<{ success: boolean; error?: string }> {
+  _connType = type;
+  updateStatus('connecting');
+  
+  if (type === 'usb') {
+    return await initWebSerial();
+  } else if (type === 'bluetooth') {
+    return await initWebBluetooth();
   }
+  
+  updateStatus('disconnected');
+  return { success: false, error: 'INVALID_TYPE' };
 }
 
-export function isConnected() {
-  return port !== null && port.readable !== null && writer !== null;
-}
-
-let isConnecting = false;
-
-export async function initSerial(auto = false): Promise<{success: boolean, msg?: string, error?: any}> {
-  if (isConnecting) return { success: false, msg: "Connection in progress..." };
-  if (communicationMode === 'wifi') return { success: true }; 
-  
-  if (port && port.readable && writer) {
-    return { success: true, msg: "Already connected" };
-  }
-
-  isConnecting = true;
-  
-  if (!('serial' in navigator)) {
-    console.warn("Web Serial API not supported in this browser.");
-    isConnecting = false;
-    return { success: false, error: 'Not supported' };
-  }
-
-  if (port) {
-    try {
-      await closeSerial();
-    } catch (e) {
-      console.warn("Cleanup of old port failed:", e);
-    }
-  }
-
+async function initWebSerial() {
+  if (!('serial' in navigator)) return { success: false, error: 'Not supported' };
   try {
-    if (auto) {
-      const ports = await navigator.serial.getPorts();
-      if (ports.length > 0) {
-        port = ports[0];
-      } else {
-        return { success: false, error: 'No authorized ports found' };
-      }
-    } else {
-      port = await navigator.serial.requestPort();
+    const ports = await (navigator as any).serial.getPorts();
+    if (ports.length > 0) {
+      port = ports[0];
+      await port.open({ baudRate: 9600 });
+      await port.setSignals({ dataTerminalReady: true, requestToSend: true });
+      await new Promise(r => setTimeout(r, 2000));
+      if (port.writable) writer = port.writable.getWriter();
+      startReading();
+      updateStatus('connected');
+      return { success: true };
     }
+    updateStatus('disconnected');
+    return { success: false, error: 'NEEDS_USER_GESTURE' };
+  } catch (err: any) {
+    updateStatus('error', err.message);
+    return { success: false, error: err.message };
+  }
+}
 
-    await port.open({ baudRate: 9600 });
+async function initWebBluetooth() {
+  if (!('bluetooth' in navigator)) return { success: false, error: 'Not supported' };
+  if (!bleDevice) {
+    updateStatus('disconnected');
+    return { success: false, error: 'NEEDS_USER_GESTURE' };
+  }
+  try {
+    const server = await bleDevice.gatt?.connect();
+    const service = await server?.getPrimaryService(SERVICE_UUID);
+    bleCharacteristic = await service?.getCharacteristic(RX_UUID) || null;
     
-    keepReading = true;
-    writer = port.writable!.getWriter();
-    startReading(); 
-    
-    let pings = 0;
-    const pingInterval = setInterval(() => {
-      if (pings >= 5 || port === null) {
-        clearInterval(pingInterval);
-      } else {
-        sendCommand("PING");
-        pings++;
-      }
-    }, 1000);
-    
-    console.log(`Serial Connected Successfully @ 9600 (Auto: ${auto})`);
+    const txChar = await service?.getCharacteristic(TX_UUID);
+    await txChar?.startNotifications();
+    txChar?.addEventListener('characteristicvaluechanged', (event: any) => {
+      const value = new TextDecoder().decode(event.target.value).trim();
+      if (value) dispatchMessage(value);
+    });
+
+    updateStatus('connected');
     return { success: true };
   } catch (err: any) {
-    if (err.name === 'NotFoundError') {
-      console.warn("[Serial] User cancelled the port selection dialog.");
-      return { success: false, msg: "No port selected" };
-    }
-    console.error("Failed to init serial:", err);
-    return { success: false, msg: err.message || "Unknown error" };
-  } finally {
-    isConnecting = false;
+    updateStatus('error', err.message);
+    return { success: false, error: err.message };
   }
 }
 
-let listeners = new Set<(msg: string) => void>();
-
-export function onMessage(callback: (msg: string) => void) {
-  listeners.add(callback);
-  return () => listeners.delete(callback);
-}
-
-let inputBuffer = '';
-
-async function startReading() {
-  if (!port || !port.readable) return;
-  
-  reader = port.readable.getReader();
+export async function requestBluetoothDevice() {
   try {
-    while (keepReading) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      
-      const decoded = new TextDecoder().decode(value);
-      inputBuffer += decoded;
-
-      // Process lines (Arduino usually sends \n or \r\n)
-      if (inputBuffer.includes('\n') || inputBuffer.includes('\r')) {
-        const lines = inputBuffer.split(/\r?\n/);
-        // The last element might be an incomplete line, keep it in buffer
-        inputBuffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const cleanLine = line.trim();
-          if (cleanLine) {
-            console.log(`[Serial RECV] ${cleanLine}`);
-            listeners.forEach(cb => cb(cleanLine));
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.error("Read error:", err);
-  } finally {
-    if (reader) {
-      reader.releaseLock();
-      reader = null;
-    }
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'HEALER-ROBOT' }],
+      optionalServices: [SERVICE_UUID]
+    });
+    _connType = 'bluetooth'; // Update mode here
+    return await initWebBluetooth();
+  } catch (err: any) {
+    return { success: false, error: err.message };
   }
 }
 
-export async function discoverHardware(): Promise<string | null> {
-  if (isScanning) return null;
-  isScanning = true;
-  console.log("[Radar] Starting hardware discovery...");
-
-  const baseIP = "192.168.1."; 
-  const range = Array.from({ length: 20 }, (_, i) => i + 1); 
-
-  for (const i of range) {
-    const ip = `${baseIP}${i}`;
-    try {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 100); 
-      
-      await fetch(`http://${ip}/ping`, { 
-        mode: 'no-cors',
-        signal: controller.signal 
-      });
-      
-      clearTimeout(id);
-      console.log(`[Radar] Found potential hardware at ${ip}`);
-      isScanning = false;
-      return ip;
-    } catch (e) {}
-  }
-
+export async function requestWebSerialPort() {
   try {
-    await fetch(`http://healer.local/ping`, { mode: 'no-cors' });
-    isScanning = false;
-    return "healer.local";
-  } catch (e) {}
-
-  isScanning = false;
-  return null;
+    port = await (navigator as any).serial.requestPort();
+    _connType = 'usb'; // Update mode here
+    return await initWebSerial();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
 }
+
+let isProcessingQueue = false;
+const commandQueue: string[] = [];
 
 export async function sendCommand(command: string) {
   const fullCommand = command.endsWith('\n') ? command : `${command}\n`;
+  commandQueue.push(fullCommand);
+  processQueue();
+}
+
+async function processQueue() {
+  if (isProcessingQueue || commandQueue.length === 0) return;
   
-  if (communicationMode === 'wifi') {
+  isProcessingQueue = true;
+  while (commandQueue.length > 0) {
+    const nextCommand = commandQueue.shift();
+    if (!nextCommand) continue;
+
     try {
-      // SYNCED WITH FIRMWARE: uses /cmd?v=
-      console.log(`[WiFi] Sending: ${command} to http://${espIp}/cmd`);
-      await fetch(`http://${espIp}/cmd?v=${encodeURIComponent(command.trim())}`, { 
-        mode: 'no-cors',
-        cache: 'no-cache'
-      });
-      console.log(`[WiFi] Success`);
+      if (_connType === 'usb' && writer) {
+        await writer.ready;
+        await writer.write(new TextEncoder().encode(nextCommand));
+      } else if (_connType === 'bluetooth' && bleCharacteristic) {
+        // Use standard writeValue (which selects best method) and wait
+        await bleCharacteristic.writeValue(new TextEncoder().encode(nextCommand));
+        // Safety delay for the BLE-to-Serial bridge on the ESP32
+        await new Promise(r => setTimeout(r, 600));
+      }
+      console.log(`[QUEUE]: Sent ${nextCommand.trim()}`);
     } catch (err) {
-      console.error("[WiFi] Send failed:", err);
+      console.error("Failed to send command:", err);
     }
-    return;
   }
+  isProcessingQueue = false;
+}
 
-  // Serial Mode
-  if (!writer) {
-    console.warn("Serial not connected. Command ignored:", command);
-    return;
-  }
-  
-  try {
-    const data = new TextEncoder().encode(fullCommand);
-    await writer.write(data);
-    console.log(`[Serial] Sent: ${fullCommand.trim()}`);
-  } catch (err) {
-    console.error("Failed to send command:", err);
+function startReading() {
+  keepReading = true;
+  (async () => {
+    while (port && port.readable && keepReading) {
+      try {
+        reader = port.readable.getReader();
+        let buffer = "";
+        while (keepReading) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += new TextDecoder().decode(value);
+          let nl = buffer.indexOf('\n');
+          while (nl >= 0) {
+            const msg = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (msg) dispatchMessage(msg);
+            nl = buffer.indexOf('\n');
+          }
+        }
+      } catch (e) {
+        console.error("Serial read error:", e);
+      } finally {
+        if (reader) {
+          reader.releaseLock();
+          reader = null;
+        }
+      }
+    }
+  })();
+}
+
+function updateStatus(status: HardwareStatus, error?: string) {
+  _status = status;
+  window.dispatchEvent(new CustomEvent('hardware-status', { detail: { status, error } }));
+}
+
+function dispatchMessage(msg: string) {
+  const cleanMsg = msg.trim();
+  if (cleanMsg) {
+    window.dispatchEvent(new CustomEvent('hardware-message', { detail: cleanMsg }));
   }
 }
 
-async function pollWiFiMessages() {
-  if (communicationMode !== 'wifi') return;
-  
-  try {
-    // SYNCED WITH FIRMWARE: uses /getMsg
-    const res = await fetch(`http://${espIp}/getMsg`);
-    const data = await res.text();
-    if (data && data.length > 0) {
-      console.log(`[WiFi RECV] ${data}`);
-      listeners.forEach(cb => cb(data));
-    }
-  } catch (e) {}
-}
+// Helpers for React components
+export const onConnectionStatus = (callback: (status: HardwareStatus, error?: string) => void) => {
+  const handler = (e: any) => callback(e.detail.status, e.detail.error);
+  window.addEventListener('hardware-status', handler);
+  return () => window.removeEventListener('hardware-status', handler);
+};
 
-export async function checkWiFiConnection(): Promise<boolean> {
-  console.log(`[WiFi] Verifying connection to ${espIp}...`);
-  try {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 3000); // Increased to 3s
-    
-    const res = await fetch(`http://${espIp}/getMsg`, { 
-      mode: 'cors', // Firmware supports CORS
-      signal: controller.signal 
-    });
-    
-    clearTimeout(id);
-    if (res.ok) {
-      console.log("[WiFi] Connection Verified! Machine is online.");
-      return true;
-    }
-    console.warn(`[WiFi] Machine responded but with error code: ${res.status}`);
-    return false;
-  } catch (e: any) {
-    if (e.name === 'AbortError') {
-      console.warn("[WiFi] Connection TIMED OUT. Machine is too slow or IP is wrong.");
-    } else {
-      console.error("[WiFi] Connection REFUSED. Check if IP is correct and Machine is on the same WiFi.");
-    }
-    return false;
-  }
-}
+export const onMessage = (callback: (msg: string) => void) => {
+  const handler = (e: any) => callback(e.detail);
+  window.addEventListener('hardware-message', handler);
+  return () => window.removeEventListener('hardware-message', handler);
+};
 
-export async function closeSerial() {
+export const getConnectionStatus = () => _status;
+export const getHardwareConfig = () => ({ type: _connType });
+
+export const closeHardware = async () => {
   keepReading = false;
-  if (reader) await reader.cancel();
+  
   if (writer) {
+    try {
+      await writer.close();
+    } catch (e) {}
     writer.releaseLock();
     writer = null;
   }
+
+  if (reader) {
+    try {
+      await reader.cancel();
+    } catch (e) {}
+    // reader.releaseLock() is handled in the startReading finally block
+    reader = null;
+  }
+
   if (port) {
-    await port.close();
+    try {
+      await port.close();
+    } catch (e) {
+      console.error("Error closing port:", e);
+    }
     port = null;
   }
-  console.log("Serial Connection Closed.");
-}
 
+  if (bleDevice) {
+    if (bleDevice.gatt?.connected) {
+      bleDevice.gatt.disconnect();
+    }
+    bleDevice = null;
+  }
+  
+  updateStatus('disconnected');
+};

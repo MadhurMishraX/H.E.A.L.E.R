@@ -12,7 +12,7 @@ import {
   CreditCard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { initSerial, onMessage, closeSerial } from '../utils/serialComm';
+import { onMessage, closeHardware } from '../utils/serialComm';
 import { getSetting, addAdminLog } from '../services/dbService';
 
 export const AdminLoginScreen = () => {
@@ -30,21 +30,22 @@ export const AdminLoginScreen = () => {
   const rfidTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lockoutIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const stepRef = useRef(step);
-  useEffect(() => { stepRef.current = step; }, [step]);
-
   useEffect(() => {
     const setup = async () => {
       // Get admin pin from settings
       const pinSetting = await getSetting('admin_pin');
       setAdminPin(pinSetting || '1234');
 
+      // Check if RFID is enabled
+      const rfidSetting = await getSetting('rfid_enabled');
+      if (rfidSetting === 'false') {
+        setStep('pin');
+        return;
+      }
+
       // Init serial and listen for RFID
-      await initSerial();
-      const removeListener = onMessage((msg) => {
-        console.log(`[AdminLogin] Received: ${msg} (Current Step: ${stepRef.current})`);
-        if (msg.startsWith('RFID_DETECTED') && stepRef.current === 'rfid') {
-          console.log("[AdminLogin] RFID match found! Transitioning to PIN...");
+      const unlisten = onMessage((msg) => {
+        if (msg.trim() === 'RFID_DETECTED' && step === 'rfid') {
           handleRfidSuccess();
         }
       });
@@ -52,18 +53,18 @@ export const AdminLoginScreen = () => {
       // Start RFID timeout
       startRfidTimeout();
 
-      return removeListener;
+      return unlisten;
     };
 
-    let cleanupFn: (() => void) | undefined;
-    setup().then(remove => cleanupFn = remove);
+    let unlistenFn: (() => void) | undefined;
+    setup().then(fn => { unlistenFn = fn; });
 
     return () => {
       if (rfidTimeoutRef.current) clearTimeout(rfidTimeoutRef.current);
       if (lockoutIntervalRef.current) clearInterval(lockoutIntervalRef.current);
-      if (cleanupFn) cleanupFn();
+      if (unlistenFn) unlistenFn();
     };
-  }, []);
+  }, [step]);
 
   const startRfidTimeout = () => {
     if (rfidTimeoutRef.current) clearTimeout(rfidTimeoutRef.current);

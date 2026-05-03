@@ -1,43 +1,32 @@
 /*
- * H.E.A.L.E.R - ESP32-CAM Firmware
- * ---------------------------------
- * Captures photos every 2 seconds when triggered by Arduino.
- * Serves captured photos over a local Wi-Fi web server.
- * 
- * Hardware: AI-Thinker ESP32-CAM
- * Wiring to Arduino Mega:
- * - ESP32 GPIO 13  <-> Arduino Pin 22 (Trigger)
- * - ESP32 GND      <-> Arduino GND
- * - ESP32 5V       <-> Arduino 5V
+ * H.E.A.L.E.R - ESP32-CAM Safe Mode Firmware
  */
 
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 #include "esp_camera.h"
 #include "Arduino.h"
 #include "FS.h"
 #include "SD_MMC.h"
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
-#include "driver/rtc_io.h"
-#include <WiFi.h>
-#include <WebServer.h>
+
+#define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 
 // --- Configuration ---
-const bool WIFI_ENABLED = true;
-const char* WIFI_SSID = "HEALER_Control";
-const char* WIFI_PASSWORD = "password123";
+const int TRIGGER_PIN = 12; // Moved from 13 to 12 to avoid SD Card/LED conflicts
+const int BAUD_RATE = 9600; 
+const int CAPTURE_INTERVAL = 5000; // Increased to 5 seconds to prevent overheating
 
-const int TRIGGER_PIN = 13;
-const int CAPTURE_INTERVAL = 2000; // 2 seconds
+BLEServer *pServer = NULL;
+BLECharacteristic *pTxCharacteristic;
+bool deviceConnected = false;
 
-// --- State Variables ---
-bool isCapturing = false;
-unsigned long lastCaptureTime = 0;
-unsigned long sessionStartTime = 0;
-int photoCounter = 0;
-
-WebServer server(80);
-
-// --- AI-Thinker Camera Pinout ---
+// AI-Thinker Pinout
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
 #define XCLK_GPIO_NUM      0
@@ -55,17 +44,52 @@ WebServer server(80);
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) { deviceConnected = true; };
+    void onDisconnect(BLEServer* pServer) { 
+      deviceConnected = false; 
+      pServer->getAdvertising()->start();
+    }
+};
+
+class MyCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+      String rxValue = pCharacteristic->getValue();
+      if (rxValue.length() > 0) {
+        Serial.print(rxValue); // Send to Mega
+      }
+    }
+};
+
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Disable brownout detector
   
-  Serial.begin(115200);
-  Serial.setDebugOutput(true);
-  Serial.println();
+  // Using the standard Serial (U0T/U0R pins) at 9600 baud to match Mega
+  Serial.begin(BAUD_RATE); 
 
-  // 1. Initialize Trigger Pin
-  pinMode(TRIGGER_PIN, INPUT);
+  pinMode(TRIGGER_PIN, INPUT_PULLUP); 
 
-  // 2. Initialize Camera
+  // ... (rest of setup)
+
+  BLEDevice::init("HEALER-ROBOT");
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+  pTxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_NOTIFY);
+  pTxCharacteristic->addDescriptor(new BLE2902());
+  BLECharacteristic *pRxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
+  pRxCharacteristic->setCallbacks(new MyCallbacks());
+  pService->start();
+
+  // --- Enhanced Advertising for high visibility ---
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);  
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+  Serial.println("Bluetooth 'HEALER-ROBOT' is SHOUTING... Ready to connect!");
+
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -85,154 +109,42 @@ void setup() {
   config.pin_sscb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
+  config.xclk_freq_hz = 5000000; // Lowered to 5MHz (Ultra Stable Mode)
   config.pixel_format = PIXFORMAT_JPEG;
-
-  if (psramFound()) {
-    config.frame_size = FRAMESIZE_UXGA;
-    config.jpeg_quality = 10;
-    config.fb_count = 2;
-  } else {
-    config.frame_size = FRAMESIZE_SVGA;
-    config.jpeg_quality = 12;
-    config.fb_count = 1;
-  }
+  
+  // Minimal Resolution for testing
+  config.frame_size = FRAMESIZE_QVGA; 
+  config.jpeg_quality = 15;
+  config.fb_count = 1;
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x", err);
-    return;
+    Serial.printf("Camera init failed with error 0x%x\n", err);
+  } else {
+    Serial.println("Camera Ready!");
   }
-
-  // 3. Initialize SD Card
-  if (!SD_MMC.begin()) {
-    Serial.println("SD Card Mount Failed");
-    return;
-  }
-
-  // Create photos directory
-  if (!SD_MMC.exists("/photos")) {
-    SD_MMC.mkdir("/photos");
-  }
-
-  // 4. Initialize Wi-Fi and Server
-  if (WIFI_ENABLED) {
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-    }
-    Serial.println("");
-    Serial.println("WiFi connected");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-
-    server.on("/photos", HTTP_GET, handleListPhotos);
-    server.onNotFound(handlePhotoRequest);
-    server.begin();
-  }
-
-  Serial.println("ESP32CAM_READY");
 }
 
 void loop() {
-  if (WIFI_ENABLED) {
-    server.handleClient();
-  }
-
-  int triggerStatus = digitalRead(TRIGGER_PIN);
-
-  if (triggerStatus == HIGH) {
-    if (!isCapturing) {
-      // Start new capture session
-      isCapturing = true;
-      sessionStartTime = millis();
-      photoCounter = 0;
-      Serial.println("Capture Session Started");
-    }
-
-    // Capture every 2 seconds
-    if (millis() - lastCaptureTime >= CAPTURE_INTERVAL) {
-      capturePhoto();
-      lastCaptureTime = millis();
-    }
-  } else {
-    if (isCapturing) {
-      // End capture session
-      isCapturing = false;
-      unsigned long endTime = millis();
-      saveLog(sessionStartTime, endTime, photoCounter);
-      Serial.println("Capture Session Ended");
+  // Bridge Bluetooth data to Serial (Mega)
+  if (Serial.available()) {
+    String msg = Serial.readStringUntil('\n');
+    if (deviceConnected) {
+      pTxCharacteristic->setValue(msg.c_str());
+      pTxCharacteristic->notify();
     }
   }
+
+  // Pin 12 Trigger removed to prevent noise-based spamming
 }
 
 void capturePhoto() {
-  camera_fb_t * fb = NULL;
-  fb = esp_camera_fb_get();
+  camera_fb_t * fb = esp_camera_fb_get();
   if (!fb) {
-    Serial.println("Camera capture failed");
+    Serial.println("Camera Capture Failed - Check Power or Cable");
     return;
   }
-
-  char path[64];
-  sprintf(path, "/photos/%lu_%d.jpg", millis(), photoCounter);
   
-  File file = SD_MMC.open(path, FILE_WRITE);
-  if (!file) {
-    Serial.println("Failed to open file for writing");
-  } else {
-    file.write(fb->buf, fb->len);
-    Serial.printf("Saved: %s\n", path);
-    photoCounter++;
-  }
-  file.close();
+  Serial.printf("Success! Photo Captured: %d bytes\n", fb->len);
   esp_camera_fb_return(fb);
-}
-
-void saveLog(unsigned long start, unsigned long end, int count) {
-  char logPath[64];
-  sprintf(logPath, "/photos/log_%lu.txt", start);
-  File file = SD_MMC.open(logPath, FILE_WRITE);
-  if (file) {
-    file.printf("Session Start: %lu\n", start);
-    file.printf("Session End: %lu\n", end);
-    file.printf("Photos Captured: %d\n", count);
-    file.close();
-  }
-}
-
-// --- Server Handlers ---
-
-void handleListPhotos() {
-  String json = "[";
-  File root = SD_MMC.open("/photos");
-  if (root) {
-    File file = root.openNextFile();
-    while (file) {
-      if (json != "[") json += ",";
-      json += "\"" + String(file.name()) + "\"";
-      file = root.openNextFile();
-    }
-    root.close();
-  }
-  json += "]";
-  server.send(200, "application/json", json);
-}
-
-void handlePhotoRequest() {
-  String path = server.uri();
-  if (!path.startsWith("/photos/")) {
-    server.send(404, "text/plain", "Not Found");
-    return;
-  }
-
-  File file = SD_MMC.open(path, FILE_READ);
-  if (!file) {
-    server.send(404, "text/plain", "File Not Found");
-    return;
-  }
-
-  server.streamFile(file, "image/jpeg");
-  file.close();
 }

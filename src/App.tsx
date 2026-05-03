@@ -15,10 +15,9 @@ import { Loader2 } from 'lucide-react';
 import { initSerial, onMessage } from './utils/serialComm';
 
 const MainLayout = () => {
-  const { t, setCurrentPatient, setCurrentSession, setIsHardwareConnected } = useAppContext();
+  const { setCurrentPatient, setCurrentSession } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
-
 
   useEffect(() => {
     // Intercept back button for Android Kiosk

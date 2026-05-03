@@ -1,8 +1,16 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import locales from '../locales.json';
-import { initSerial, onMessage, setCommunicationMode, checkWiFiConnection } from '../utils/serialComm';
+import { 
+  initHardware, 
+  onConnectionStatus, 
+  onMessage, 
+  getHardwareConfig, 
+  getConnectionStatus 
+} from '../utils/serialComm';
 
 type Language = 'en' | 'hi';
+type HardwareStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+type HardwareMode = 'usb' | 'bluetooth';
 
 type Patient = any; // Will refine types in later chunks
 type Session = any; // Will refine types in later chunks
@@ -11,18 +19,16 @@ interface AppContextType {
   currentPatient: Patient | null;
   currentSession: Session | null;
   language: Language;
-  isHardwareConnected: boolean;
+  hwStatus: HardwareStatus;
+  hwMode: HardwareMode | null;
+  hwError: string | null;
+  lastHardwareMessage: string | null;
   setLanguage: (lang: Language) => void;
   setCurrentPatient: (patient: Patient | null) => void;
   setCurrentSession: (session: Session | null) => void;
+  reconnect: () => Promise<void>;
   setIsHardwareConnected: (connected: boolean) => void;
-  commMode: 'serial' | 'wifi';
-  setCommMode: (mode: 'serial' | 'wifi') => void;
-  espIp: string;
-  setEspIp: (ip: string) => void;
-  connectHardware: () => Promise<boolean>;
-  discoverHardware: () => Promise<string | null>;
-  disconnectHardware: () => Promise<void>;
+  setHwError: (error: string | null) => void;
   t: (path: string) => string;
 }
 
@@ -31,84 +37,48 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [currentPatient, setCurrentPatient] = useState<Patient | null>(null);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
-  const [language, setLanguage] = useState<Language>(localStorage.getItem('healer_lang') as Language || 'en');
-  const [isHardwareConnected, setIsHardwareConnected] = useState<boolean>(false);
-  const [commMode, setCommMode] = useState<'serial' | 'wifi'>(localStorage.getItem('healer_comm_mode') as 'serial' | 'wifi' || 'serial');
-  const [espIp, setEspIp] = useState<string>(localStorage.getItem('healer_esp_ip') || 'healer.local');
+  const [language, setLanguage] = useState<Language>('en');
+  
+  const [hwStatus, setHwStatus] = useState<HardwareStatus>(getConnectionStatus());
+  const [hwMode, setHwMode] = useState<HardwareMode | null>(getHardwareConfig().type as HardwareMode);
+  const [hwError, setHwError] = useState<string | null>(null);
+  const [lastHardwareMessage, setLastHardwareMessage] = useState<string | null>(null);
 
-  // Auto-reconnect on mount
+  // Global Hardware Handlers
   useEffect(() => {
-    const attemptAutoConnect = async () => {
-      // MANDATORY: Sync initial state to driver before any connection attempt
-      setCommunicationMode(commMode, espIp);
+    // 1. Initial Connection Status Sync
+    const unlistenStatus = onConnectionStatus((status, error) => {
+      setHwStatus(status);
+      setHwMode(getHardwareConfig().type as HardwareMode);
+      if (error) setHwError(error);
+      else if (status === 'connected') setHwError(null);
+    });
 
-      if (commMode === 'serial') {
-        const res = await initSerial(true);
-        if (res.success) {
-          onMessage((msg) => {
-            if (msg.trim() === 'ARDUINO_READY') {
-              setIsHardwareConnected(true);
-            }
-          });
-        }
-      } else {
-        const isOk = await checkWiFiConnection();
-        if (isOk) setIsHardwareConnected(true);
+    // 2. Global Message Listener (e.g. for RFID, Emergency stops, etc.)
+    const unlistenMessages = onMessage((msg) => {
+      console.log(`[GLOBAL HW MESSAGE]: ${msg}`);
+      setLastHardwareMessage(msg);
+      // Automatically clear after a short delay so the same message can trigger again if needed
+      setTimeout(() => setLastHardwareMessage(null), 100);
+    });
+
+    // 3. Auto-Init on start (Default to USB)
+    initHardware('usb').then((res: any) => {
+      if (res && res.success === false && res.error === 'NEEDS_USER_GESTURE') {
+        setHwStatus('disconnected');
       }
+    });
+
+    return () => {
+      unlistenStatus();
+      unlistenMessages();
     };
-    attemptAutoConnect();
   }, []);
 
-  // Sync state changes and persist (Debounced for IP typing)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setCommunicationMode(commMode, espIp);
-    }, 500);
-
-    localStorage.setItem('healer_comm_mode', commMode);
-    localStorage.setItem('healer_esp_ip', espIp);
-    localStorage.setItem('healer_lang', language);
-
-    return () => clearTimeout(timer);
-  }, [commMode, espIp, language]);
-
-  const connectHardware = async () => {
-    if (commMode === 'wifi') {
-      const isOk = await checkWiFiConnection();
-      if (isOk) setIsHardwareConnected(true);
-      return isOk;
-    }
-
-    const res = await initSerial(false);
-    if (res.success) {
-      onMessage((msg) => {
-        if (msg.trim() === 'ARDUINO_READY') {
-          setIsHardwareConnected(true);
-        }
-      });
-      return true;
-    }
-    return false;
-  };
-
-  const discoverHardwareAction = async () => {
-    const { discoverHardware } = await import('../utils/serialComm');
-    const foundIp = await discoverHardware();
-    if (foundIp) {
-      setEspIp(foundIp);
-      setIsHardwareConnected(true);
-    }
-    return foundIp;
-  };
-
-  const disconnectHardware = async () => {
-    if (commMode === 'serial') {
-      const { closeSerial } = await import('../utils/serialComm');
-      await closeSerial();
-    }
-    setIsHardwareConnected(false);
-    console.log("Hardware Disconnected");
-  };
+  const reconnect = useCallback(async () => {
+    setHwError(null);
+    await initHardware('usb');
+  }, []);
 
   // Simple translation helper t('landing.title')
   const t = (path: string): string => {
@@ -128,18 +98,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       currentPatient,
       currentSession,
       language,
-      isHardwareConnected,
+      hwStatus,
+      hwMode,
+      hwError,
+      lastHardwareMessage,
       setLanguage,
       setCurrentPatient,
       setCurrentSession,
-      setIsHardwareConnected,
-      commMode,
-      setCommMode,
-      espIp,
-      setEspIp,
-      connectHardware,
-      discoverHardware: discoverHardwareAction,
-      disconnectHardware,
+      reconnect,
+      setIsHardwareConnected: (connected: boolean) => setHwStatus(connected ? 'connected' : 'disconnected'),
+      setHwError,
       t
     }}>
       {children}
