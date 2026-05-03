@@ -11,7 +11,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { initSerial, sendCommand, onMessage, closeSerial } from '../utils/serialComm';
+import { initHardware, sendCommand, onMessage, closeHardware } from '../utils/serialComm';
 import { dispense, addAdminLog } from '../services/dbService';
 
 export const DispensingScreen = () => {
@@ -35,6 +35,7 @@ export const DispensingScreen = () => {
   const [dbError, setDbError] = useState('');
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasStarted = useRef(false);
 
   useEffect(() => {
     if (!params.compartment_number && !params.isFirstAid) {
@@ -42,10 +43,14 @@ export const DispensingScreen = () => {
       return;
     }
 
+    if (hasStarted.current) return;
+    hasStarted.current = true;
+
     let unlistenFn: (() => void) | undefined;
     const startFlow = async () => {
+      console.log("Dispensing: startFlow initiated");
       // 1. Check Hardware Connection
-      if (hwStatus !== 'connected' && hwMode !== 'simulated') {
+      if (hwStatus !== 'connected') {
         setHardwareError(true);
         // Dispatching a mock error log
         addAdminLog(`ERROR: Dispensing attempted while hardware is ${hwStatus}`).catch(() => {});
@@ -97,6 +102,7 @@ export const DispensingScreen = () => {
   }, []);
 
   const handleComplete = async () => {
+    console.log("Dispensing: handleComplete triggered");
     setIsProcessing(true);
     
     // 5. Send Stop Commands
@@ -131,6 +137,16 @@ export const DispensingScreen = () => {
       setIsProcessing(false);
     }
   };
+
+  // Auto-navigate after success
+  useEffect(() => {
+    if (isCompleted && !dbError) {
+      const timeout = setTimeout(() => {
+        navigate(isFirstAid ? '/' : '/prescription');
+      }, 3000); // 3 seconds is perfect for reading the success message
+      return () => clearTimeout(timeout);
+    }
+  }, [isCompleted, dbError, navigate, isFirstAid]);
 
   const handleCancel = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -231,25 +247,28 @@ export const DispensingScreen = () => {
                   .replace('{{m}}', medicine_name)}
               </p>
 
-              <div className="flex gap-6 items-center">
+              <div className="flex flex-row gap-6 items-center justify-center w-full max-w-lg">
                 <motion.button 
                   whileTap={{ scale: 0.95 }}
                   onClick={addTime}
                   disabled={isProcessing}
-                  className="h-16 px-8 rounded-full flex items-center gap-4 transition-all border-2 border-brand-secondary text-brand-secondary hover:bg-[rgba(0,188,212,0.1)] hover:shadow-[0_0_20px_rgba(0,188,212,0.3)] disabled:opacity-50"
+                  className="flex-1 h-16 px-6 rounded-2xl flex items-center justify-center gap-3 transition-all border-2 border-brand-secondary text-brand-secondary hover:bg-[rgba(0,188,212,0.1)] hover:shadow-[0_0_20px_rgba(0,188,212,0.3)] disabled:opacity-50 whitespace-nowrap"
                 >
-                  <Plus size={24} />
-                  <span className="text-sm font-bold uppercase tracking-widest">+10 Seconds</span>
+                  <Plus size={20} />
+                  <span className="text-[13px] font-black uppercase tracking-widest">+10 SECONDS</span>
                 </motion.button>
 
-                <motion.button 
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleCancel}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleComplete}
                   disabled={isProcessing}
-                  className="h-16 px-8 rounded-full flex items-center gap-4 transition-all border-2 border-brand-danger text-brand-danger hover:bg-[rgba(255,82,82,0.1)] hover:shadow-[0_0_20px_rgba(255,82,82,0.3)] disabled:opacity-50"
+                  className="flex-1 h-16 rounded-2xl bg-brand-danger/10 border border-brand-danger/30 text-brand-danger flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(255,82,82,0.1)] hover:bg-brand-danger/20 transition-all disabled:opacity-50"
                 >
-                  <ArrowLeft size={24} />
-                  <span className="text-sm font-bold uppercase tracking-widest">{t('dispensing.cancel')}</span>
+                  <Clock size={20} className="animate-pulse" />
+                  <span className="font-black uppercase tracking-widest text-sm">
+                    {isProcessing ? 'Wait...' : 'CLOSE'}
+                  </span>
                 </motion.button>
               </div>
               
@@ -304,16 +323,20 @@ export const DispensingScreen = () => {
               </div>
 
               <h2 className="text-4xl font-bold text-text-primary mb-4 glow-success">{t('dispensing.success')}</h2>
-              <p className="text-xl text-text-secondary font-medium mb-16 tracking-wide">{t('dispensing.closed')}</p>
+              <p className="text-xl text-text-secondary font-medium mb-8 tracking-wide">{t('dispensing.closed')}</p>
               
-              <motion.button 
-                whileTap={{ scale: 0.96 }}
-                onClick={() => navigate(isFirstAid ? '/' : '/prescription')}
-                className="h-16 px-10 bg-brand-primary hover:bg-[#1E88E5] text-white rounded-full text-sm font-bold tracking-widest uppercase shadow-[0_0_20px_rgba(33,150,243,0.5)] flex items-center gap-3 transition-colors"
-              >
-                <ArrowLeft size={20} strokeWidth={3} />
-                {isFirstAid ? t('landing.home') : t('dispensing.backToPrescription')}
-              </motion.button>
+              <div className="flex flex-col items-center gap-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-success/60 animate-pulse">
+                  Redirecting automatically...
+                </div>
+                <motion.button 
+                  whileTap={{ scale: 0.96 }}
+                  onClick={() => navigate(isFirstAid ? '/' : '/prescription')}
+                  className="h-14 px-10 border border-white/10 hover:bg-white/5 text-text-secondary rounded-full text-[10px] font-bold tracking-widest uppercase transition-colors"
+                >
+                  {isFirstAid ? t('landing.home') : t('dispensing.backToPrescription')}
+                </motion.button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

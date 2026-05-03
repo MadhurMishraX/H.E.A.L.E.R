@@ -1,297 +1,243 @@
 /**
- * Utility for Serial Communication with Arduino.
- * Supports Web Serial API and Wi-Fi (via ESP32).
+ * H.E.A.L.E.R - Dual Mode Serial Communication (USB & Bluetooth)
+ * -------------------------------------------------------------
  */
 
-type ConnectionType = 'usb' | 'wifi' | 'simulated';
-type HardwareStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+export type ConnectionType = 'usb' | 'bluetooth' | 'none';
+export type HardwareStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 let port: any = null;
-let writer: any = null;
 let reader: any = null;
+let writer: any = null;
+let bleDevice: BluetoothDevice | null = null;
+let bleCharacteristic: BluetoothRemoteGATTCharacteristic | null = null;
+
 let keepReading = true;
-let readPromise: Promise<void> | null = null;
-let wifiPollInterval: number | null = null;
+let _connType: ConnectionType = 'none';
+let _status: HardwareStatus = 'disconnected';
 
-let _connStatus: HardwareStatus = 'disconnected';
-let _connType: ConnectionType = (localStorage.getItem('hw_conn_type') as ConnectionType) || 'simulated';
-let _wifiUrl: string = localStorage.getItem('hw_conn_url') || '';
-let messageCallbacks: Set<(msg: string) => void> = new Set();
-let statusCallbacks: Set<(status: HardwareStatus, error?: string) => void> = new Set();
-let lastError: string | null = null;
+// BLE UUIDs (Must match ESP32)
+const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const RX_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const TX_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
-export function getHardwareStatus() {
-  return {
-    type: _connType,
-    url: _wifiUrl,
-    connected: _connStatus === 'connected',
-    status: _connStatus,
-    error: lastError
-  };
-}
-
-export function getConnectionStatus() {
-  return _connStatus;
-}
-
-export function onMessage(callback: (msg: string) => void) {
-  messageCallbacks.add(callback);
-  return () => {
-    messageCallbacks.delete(callback);
-  };
-}
-
-export function onConnectionStatus(callback: (status: HardwareStatus, error?: string) => void) {
-  statusCallbacks.add(callback);
-  return () => {
-    statusCallbacks.delete(callback);
-  };
-}
-
-function dispatchConnectionStatus(status: HardwareStatus, error?: string) {
-  _connStatus = status;
-  if (error) lastError = error;
-  console.log(`HARDWARE STATUS: ${status}${error ? ` (${error})` : ''}`);
-  statusCallbacks.forEach(cb => cb(status, error));
-}
-
-function dispatchMessage(msg: string) {
-  console.log(`SERIAL RECV: ${msg}`);
-  messageCallbacks.forEach(cb => cb(msg));
-}
-
-export function updateHardwareConfig(type: ConnectionType, url?: string) {
+/**
+ * Initialize Hardware Connection (Auto-reconnect for USB)
+ */
+export async function initHardware(type: ConnectionType): Promise<{ success: boolean; error?: string }> {
   _connType = type;
-  localStorage.setItem('hw_conn_type', type);
-  if (url !== undefined) {
-    _wifiUrl = url;
-    localStorage.setItem('hw_conn_url', url);
+  updateStatus('connecting');
+  
+  if (type === 'usb') {
+    return await initWebSerial();
+  } else if (type === 'bluetooth') {
+    return await initWebBluetooth();
   }
-  lastError = null;
-}
-
-export function getHardwareConfig() {
-  return { type: _connType, url: _wifiUrl };
-}
-
-export async function initSerial() {
-  lastError = null;
-  dispatchConnectionStatus('connecting');
-
-  try {
-    if (_connType === 'wifi') {
-      const res = await initWifi();
-      if (res.success) {
-        dispatchConnectionStatus('connected');
-      } else {
-        dispatchConnectionStatus('error', res.error);
-      }
-      return res;
-    } else if (_connType === 'usb') {
-      const res = await initWebSerial();
-      if (res.success) {
-        dispatchConnectionStatus('connected');
-      } else {
-        if (res.error !== 'NEEDS_USER_GESTURE') {
-          dispatchConnectionStatus('error', res.error);
-        }
-      }
-      return res;
-    } else {
-      console.log("Serial Initialized (Simulated)");
-      _connStatus = 'connected';
-      dispatchConnectionStatus('connected');
-      setTimeout(() => simulateInbound("ARDUINO_READY"), 1000);
-      return { success: true };
-    }
-  } catch (err: any) {
-    const msg = err.message || 'Unknown connection error';
-    dispatchConnectionStatus('error', msg);
-    return { success: false, error: msg };
-  }
-}
-
-async function initWifi() {
-  if (!_wifiUrl) {
-    return { success: false, error: 'WiFi URL is required' };
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-  try {
-    const res = await fetch(`${_wifiUrl}/ping`, { 
-      method: 'GET', 
-      mode: 'cors',
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-
-    if (res.ok) {
-      startWifiPolling();
-      return { success: true };
-    }
-    return { success: false, error: 'WiFi Ping failed (Station offline)' };
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    console.error("WiFi init failed:", err);
-    if (err.name === 'AbortError') {
-      return { success: false, error: 'WiFi connection timed out (5s)' };
-    }
-    return { success: false, error: err.message || 'WiFi Connection refused' };
-  }
-}
-
-function startWifiPolling() {
-  if (wifiPollInterval) clearInterval(wifiPollInterval);
-  wifiPollInterval = window.setInterval(async () => {
-    try {
-      const res = await fetch(`${_wifiUrl}/messages`, { method: 'GET', mode: 'cors' });
-      const msgs = await res.json();
-      if (Array.isArray(msgs)) {
-        msgs.forEach(msg => {
-          if (msg) dispatchMessage(msg);
-        });
-      }
-    } catch(e) {
-      // ignore poll errors
-    }
-  }, 1000); // poll every 1s
+  
+  updateStatus('disconnected');
+  return { success: false, error: 'INVALID_TYPE' };
 }
 
 async function initWebSerial() {
-  if (!('serial' in navigator)) {
-    console.warn("Web Serial API not supported in this browser.");
-    return { success: false, error: 'Not supported' };
-  }
-  
-  if (port) {
-    return { success: true };
-  }
-
+  if (!('serial' in navigator)) return { success: false, error: 'Not supported' };
   try {
-    const requestOptions = {
-        filters: [{ usbVendorId: 0x2341 }] // Arduino vendor ID
-    };
-    // If not already authorized, this might fail without user gesture.
-    // Assuming the user already authorized or we are auto-connecting
     const ports = await (navigator as any).serial.getPorts();
     if (ports.length > 0) {
       port = ports[0];
       await port.open({ baudRate: 9600 });
-      writer = port.writable.getWriter();
-      keepReading = true;
-      readPromise = readUntilClosed();
+      await port.setSignals({ dataTerminalReady: true, requestToSend: true });
+      await new Promise(r => setTimeout(r, 2000));
+      if (port.writable) writer = port.writable.getWriter();
+      startReading();
+      updateStatus('connected');
       return { success: true };
     }
+    updateStatus('disconnected');
     return { success: false, error: 'NEEDS_USER_GESTURE' };
   } catch (err: any) {
-    console.error("Failed to init Web Serial:", err);
-    port = null;
+    updateStatus('error', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+async function initWebBluetooth() {
+  if (!('bluetooth' in navigator)) return { success: false, error: 'Not supported' };
+  if (!bleDevice) {
+    updateStatus('disconnected');
+    return { success: false, error: 'NEEDS_USER_GESTURE' };
+  }
+  try {
+    const server = await bleDevice.gatt?.connect();
+    const service = await server?.getPrimaryService(SERVICE_UUID);
+    bleCharacteristic = await service?.getCharacteristic(RX_UUID) || null;
+    
+    const txChar = await service?.getCharacteristic(TX_UUID);
+    await txChar?.startNotifications();
+    txChar?.addEventListener('characteristicvaluechanged', (event: any) => {
+      const value = new TextDecoder().decode(event.target.value).trim();
+      if (value) dispatchMessage(value);
+    });
+
+    updateStatus('connected');
+    return { success: true };
+  } catch (err: any) {
+    updateStatus('error', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function requestBluetoothDevice() {
+  try {
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'HEALER-ROBOT' }],
+      optionalServices: [SERVICE_UUID]
+    });
+    _connType = 'bluetooth'; // Update mode here
+    return await initWebBluetooth();
+  } catch (err: any) {
     return { success: false, error: err.message };
   }
 }
 
 export async function requestWebSerialPort() {
   try {
-    const newPort = await (navigator as any).serial.requestPort();
-    if (port) { await closeSerial(); } // Clean up old one if exists
-    port = newPort;
-    await port.open({ baudRate: 9600 });
-    writer = port.writable.getWriter();
-    keepReading = true;
-    readPromise = readUntilClosed();
-    return { success: true };
-  } catch(err: any) {
-    port = null;
+    port = await (navigator as any).serial.requestPort();
+    _connType = 'usb'; // Update mode here
+    return await initWebSerial();
+  } catch (err: any) {
     return { success: false, error: err.message };
   }
 }
 
-async function readUntilClosed() {
-  while (port && port.readable && keepReading) {
-    reader = port.readable.getReader();
-    try {
-      let buffer = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += new TextDecoder().decode(value);
-        let newlineIndex = buffer.indexOf('\n');
-        while (newlineIndex >= 0) {
-          const msg = buffer.slice(0, newlineIndex).trim();
-          buffer = buffer.slice(newlineIndex + 1);
-          if (msg) {
-            dispatchMessage(msg);
-          }
-          newlineIndex = buffer.indexOf('\n');
-        }
-      }
-    } catch (error) {
-      console.error("Read error:", error);
-    } finally {
-      reader.releaseLock();
-    }
-  }
-}
+let isProcessingQueue = false;
+const commandQueue: string[] = [];
 
 export async function sendCommand(command: string) {
   const fullCommand = command.endsWith('\n') ? command : `${command}\n`;
-  console.log(`SERIAL SEND [${_connType}]: ${command}`);
+  commandQueue.push(fullCommand);
+  processQueue();
+}
 
-  if (_connType === 'wifi') {
+async function processQueue() {
+  if (isProcessingQueue || commandQueue.length === 0) return;
+  
+  isProcessingQueue = true;
+  while (commandQueue.length > 0) {
+    const nextCommand = commandQueue.shift();
+    if (!nextCommand) continue;
+
     try {
-      await fetch(`${_wifiUrl}/command?cmd=${encodeURIComponent(command)}`, { mode: 'cors' });
-    } catch(err) {
-      console.error("Failed to send command over wifi", err);
+      if (_connType === 'usb' && writer) {
+        await writer.ready;
+        await writer.write(new TextEncoder().encode(nextCommand));
+      } else if (_connType === 'bluetooth' && bleCharacteristic) {
+        // Use standard writeValue (which selects best method) and wait
+        await bleCharacteristic.writeValue(new TextEncoder().encode(nextCommand));
+        // Safety delay for the BLE-to-Serial bridge on the ESP32
+        await new Promise(r => setTimeout(r, 600));
+      }
+      console.log(`[QUEUE]: Sent ${nextCommand.trim()}`);
+    } catch (err) {
+      console.error("Failed to send command:", err);
     }
-  } else if (_connType === 'usb') {
-    if (writer) {
-      await writer.write(new TextEncoder().encode(fullCommand));
+  }
+  isProcessingQueue = false;
+}
+
+function startReading() {
+  keepReading = true;
+  (async () => {
+    while (port && port.readable && keepReading) {
+      try {
+        reader = port.readable.getReader();
+        let buffer = "";
+        while (keepReading) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += new TextDecoder().decode(value);
+          let nl = buffer.indexOf('\n');
+          while (nl >= 0) {
+            const msg = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (msg) dispatchMessage(msg);
+            nl = buffer.indexOf('\n');
+          }
+          newlineIndex = buffer.indexOf('\n');
+        }
+      } catch (e) {
+        console.error("Serial read error:", e);
+      } finally {
+        if (reader) {
+          reader.releaseLock();
+          reader = null;
+        }
+      }
     }
-  } else {
-    // Simulated
-    if (command.includes("OPEN_FA")) {
-      setTimeout(() => simulateInbound(`ACK_OPEN_FA`), 500);
-    } else if (command.includes("CLOSE_FA")) {
-      setTimeout(() => simulateInbound(`ACK_CLOSE_FA`), 500);
-    } else if (command.includes("OPEN")) {
-      const num = command.split('_')[1]?.trim();
-      setTimeout(() => simulateInbound(`ACK_OPEN_${num}`), 500);
-    } else if (command.includes("CLOSE")) {
-      const num = command.split('_')[1]?.trim();
-      setTimeout(() => simulateInbound(`ACK_CLOSE_${num}`), 500);
-    } else if (command.includes("CAM_ON")) {
-      setTimeout(() => simulateInbound(`ACK_CAM_ON`), 200);
-    } else if (command.includes("CAM_OFF")) {
-      setTimeout(() => simulateInbound(`ACK_CAM_OFF`), 200);
-    }
+  })();
+}
+
+function updateStatus(status: HardwareStatus, error?: string) {
+  _status = status;
+  window.dispatchEvent(new CustomEvent('hardware-status', { detail: { status, error } }));
+}
+
+function dispatchMessage(msg: string) {
+  const cleanMsg = msg.trim();
+  if (cleanMsg) {
+    window.dispatchEvent(new CustomEvent('hardware-message', { detail: cleanMsg }));
   }
 }
 
-export function simulateInbound(msg: string) {
-  dispatchMessage(msg);
-}
+// Helpers for React components
+export const onConnectionStatus = (callback: (status: HardwareStatus, error?: string) => void) => {
+  const handler = (e: any) => callback(e.detail.status, e.detail.error);
+  window.addEventListener('hardware-status', handler);
+  return () => window.removeEventListener('hardware-status', handler);
+};
 
-export async function closeSerial() {
-  console.log("Serial Closed");
-  if (wifiPollInterval) {
-    clearInterval(wifiPollInterval);
-    wifiPollInterval = null;
-  }
+export const onMessage = (callback: (msg: string) => void) => {
+  const handler = (e: any) => callback(e.detail);
+  window.addEventListener('hardware-message', handler);
+  return () => window.removeEventListener('hardware-message', handler);
+};
+
+export const getConnectionStatus = () => _status;
+export const getHardwareConfig = () => ({ type: _connType });
+
+export const closeHardware = async () => {
   keepReading = false;
-  if (reader) {
-    await reader.cancel();
-  }
-  if (readPromise) {
-    await readPromise;
-  }
+  
   if (writer) {
-    await writer.close();
+    try {
+      await writer.close();
+    } catch (e) {}
+    writer.releaseLock();
     writer = null;
   }
+
+  if (reader) {
+    try {
+      await reader.cancel();
+    } catch (e) {}
+    // reader.releaseLock() is handled in the startReading finally block
+    reader = null;
+  }
+
   if (port) {
-    await port.close();
+    try {
+      await port.close();
+    } catch (e) {
+      console.error("Error closing port:", e);
+    }
     port = null;
   }
-}
+
+  if (bleDevice) {
+    if (bleDevice.gatt?.connected) {
+      bleDevice.gatt.disconnect();
+    }
+    bleDevice = null;
+  }
+  
+  updateStatus('disconnected');
+};

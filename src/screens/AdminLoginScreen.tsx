@@ -12,7 +12,7 @@ import {
   CreditCard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { initSerial, onMessage, closeSerial } from '../utils/serialComm';
+import { onMessage, closeHardware } from '../utils/serialComm';
 import { getSetting, addAdminLog } from '../services/dbService';
 
 export const AdminLoginScreen = () => {
@@ -36,8 +36,14 @@ export const AdminLoginScreen = () => {
       const pinSetting = await getSetting('admin_pin');
       setAdminPin(pinSetting || '1234');
 
+      // Check if RFID is enabled
+      const rfidSetting = await getSetting('rfid_enabled');
+      if (rfidSetting === 'false') {
+        setStep('pin');
+        return;
+      }
+
       // Init serial and listen for RFID
-      // (initSerial is managed by App.tsx)
       const unlisten = onMessage((msg) => {
         if (msg.trim() === 'RFID_DETECTED' && step === 'rfid') {
           handleRfidSuccess();

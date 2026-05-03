@@ -11,11 +11,14 @@
 #include <Servo.h>
 #include <SPI.h>
 #include <MFRC522.h>
+#include <avr/wdt.h>
 
 // --- Configuration ---
 const int SERVO_OPEN_ANGLE = 90;
 const int SERVO_CLOSE_ANGLE = 0;
 const int BAUD_RATE = 9600;
+unsigned long lastRFIDCheck = 0;
+const int RFID_INTERVAL = 100; // Check every 100ms
 
 // --- Pin Assignments ---
 const int SERVO_PINS[] = {6, 7, 8, 9, 10}; // CP 1, 2, 3, 4, FA (First Aid)
@@ -33,13 +36,14 @@ String inputString = "";
 
 void setup() {
   // 1. Initialize Serial
-  Serial.begin(BAUD_RATE);
+  Serial.begin(BAUD_RATE);  // For USB Debugging
+  Serial1.begin(BAUD_RATE); // For ESP32-CAM (Pins 18/19)
   inputString.reserve(50);
 
-  // 2. Initialize Servos
+  // 2. Initialize Servos (No attach here, we use Smart Detach)
   for (int i = 0; i < 5; i++) {
-    servos[i].attach(SERVO_PINS[i]);
-    servos[i].write(SERVO_CLOSE_ANGLE);
+    // servos[i].attach(SERVO_PINS[i]); // Removed for Smart Detach
+    // servos[i].write(SERVO_CLOSE_ANGLE);
   }
 
   // 3. Initialize CAM Trigger
@@ -63,20 +67,36 @@ void loop() {
   // A. Check for Serial Commands
   handleSerial();
 
-  // B. Poll for RFID
-  checkRFID();
+  // B. Poll for RFID (Throttled)
+  if (millis() - lastRFIDCheck >= RFID_INTERVAL) {
+    checkRFID();
+    lastRFIDCheck = millis();
+  }
 }
 
 /**
  * Handle incoming serial data
  */
 void handleSerial() {
+  // Listen to USB (Serial)
   while (Serial.available()) {
     char inChar = (char)Serial.read();
-    if (inChar == '\n') {
-      processCommand(inputString);
-      inputString = "";
-    } else if (inChar != '\r') {
+    handleChar(inChar);
+  }
+
+  // Listen to Bluetooth (Serial1)
+  while (Serial1.available()) {
+    char inChar = (char)Serial1.read();
+    handleChar(inChar);
+  }
+}
+
+void handleChar(char inChar) {
+  if (inChar == '\n') {
+    processCommand(inputString);
+    inputString = "";
+  } else {
+    if (inChar != '\r') {
       inputString += inChar;
     }
   }
@@ -87,6 +107,7 @@ void handleSerial() {
  */
 void processCommand(String cmd) {
   cmd.trim();
+  sendResponse("DEBUG_RECV: [" + cmd + "]");
   
   if (cmd == "OPEN_1") { openServo(0); }
   else if (cmd == "OPEN_2") { openServo(1); }
@@ -102,50 +123,72 @@ void processCommand(String cmd) {
   
   else if (cmd == "CAM_ON") {
     digitalWrite(CAM_TRIGGER_PIN, HIGH);
-    Serial.println("ACK_CAM_ON");
+    sendResponse("ACK_CAM_ON");
   }
   else if (cmd == "CAM_OFF") {
     digitalWrite(CAM_TRIGGER_PIN, LOW);
-    Serial.println("ACK_CAM_OFF");
+    sendResponse("ACK_CAM_OFF");
   }
   
   else if (cmd == "OPEN_ALL") {
     for (int i = 0; i < 5; i++) {
+      servos[i].attach(SERVO_PINS[i]);
       servos[i].write(SERVO_OPEN_ANGLE);
-      delay(200);
+      delay(60); // Fast open due to gravity
+      servos[i].detach();
     }
-    Serial.println("ACK_OPEN_ALL");
+    sendResponse("ACK_OPEN_ALL");
   }
   else if (cmd == "CLOSE_ALL") {
     for (int i = 0; i < 5; i++) {
+      servos[i].attach(SERVO_PINS[i]);
       servos[i].write(SERVO_CLOSE_ANGLE);
-      delay(200);
+      delay(60); // Slower close to fight gravity
+      servos[i].detach();
     }
-    Serial.println("ACK_CLOSE_ALL");
+    sendResponse("ACK_CLOSE_ALL");
+  }
+  
+  else if (cmd == "REBOOT") {
+    sendResponse("ACK_REBOOTING...");
+    delay(100);
+    wdt_enable(WDTO_15MS); // Suicide timer for reboot
+    while(1); // Wait for the dog to bite
   }
   
   else if (cmd.length() > 0) {
-    Serial.println("ERR_UNKNOWN_CMD");
+    sendResponse("ERR_UNKNOWN_CMD");
   }
+}
+
+void sendResponse(String msg) {
+  Serial.println(msg);  // Send to USB
+  Serial1.println(msg); // Send to Bluetooth
 }
 
 /**
  * Control logic for single servo open
  */
 void openServo(int index) {
+  servos[index].attach(SERVO_PINS[index]); 
   servos[index].write(SERVO_OPEN_ANGLE);
-  Serial.print("ACK_OPEN_");
-  Serial.println(index + 1);
-  blinkLED(1, 200);
+  delay(400); // Fast open (Gravity helps)
+  servos[index].detach(); 
+  
+  sendResponse("ACK_OPEN_" + String(index + 1));
+  blinkLED(2, 200);
 }
 
 /**
  * Control logic for single servo close
  */
 void closeServo(int index) {
+  servos[index].attach(SERVO_PINS[index]);
   servos[index].write(SERVO_CLOSE_ANGLE);
-  Serial.print("ACK_CLOSE_");
-  Serial.println(index + 1);
+  delay(800); // Stronger close (Against gravity)
+  servos[index].detach();
+
+  sendResponse("ACK_CLOSE_" + String(index + 1));
   blinkLED(1, 200);
 }
 
@@ -153,17 +196,25 @@ void closeServo(int index) {
  * Control logic for First Aid servo open
  */
 void openFAServo() {
+  servos[4].attach(SERVO_PINS[4]);
   servos[4].write(SERVO_OPEN_ANGLE);
-  Serial.println("ACK_OPEN_FA");
-  blinkLED(2, 200); // 2 blinks for FA
+  delay(400); 
+  servos[4].detach();
+
+  sendResponse("ACK_OPEN_FA");
+  blinkLED(2, 200); 
 }
 
 /**
  * Control logic for First Aid servo close
  */
 void closeFAServo() {
+  servos[4].attach(SERVO_PINS[4]);
   servos[4].write(SERVO_CLOSE_ANGLE);
-  Serial.println("ACK_CLOSE_FA");
+  delay(800);
+  servos[4].detach();
+
+  sendResponse("ACK_CLOSE_FA");
   blinkLED(1, 200);
 }
 
@@ -176,8 +227,8 @@ void checkRFID() {
   // Select one of the cards
   if ( ! mfrc522.PICC_ReadCardSerial()) return;
 
-  // Signal detection
-  Serial.println("RFID_DETECTED");
+  // Signal detection to both USB and App
+  sendResponse("RFID_DETECTED");
   blinkLED(2, 100);
 
   // Stop crypto on PICC

@@ -1,17 +1,16 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import locales from '../locales.json';
 import { 
-  initSerial, 
+  initHardware, 
   onConnectionStatus, 
   onMessage, 
   getHardwareConfig, 
-  getConnectionStatus,
-  simulateInbound
+  getConnectionStatus 
 } from '../utils/serialComm';
 
 type Language = 'en' | 'hi';
 type HardwareStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
-type HardwareMode = 'usb' | 'wifi' | 'simulated';
+type HardwareMode = 'usb' | 'bluetooth';
 
 type Patient = any; // Will refine types in later chunks
 type Session = any; // Will refine types in later chunks
@@ -30,7 +29,6 @@ interface AppContextType {
   reconnect: () => Promise<void>;
   setIsHardwareConnected: (connected: boolean) => void;
   setHwError: (error: string | null) => void;
-  simulateRFID: (tagId?: string) => void;
   t: (path: string) => string;
 }
 
@@ -64,8 +62,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setTimeout(() => setLastHardwareMessage(null), 100);
     });
 
-    // 3. Auto-Init on start
-    initSerial().then((res: any) => {
+    // 3. Auto-Init on start (Default to USB)
+    initHardware('usb').then((res: any) => {
       if (res && res.success === false && res.error === 'NEEDS_USER_GESTURE') {
         setHwStatus('disconnected');
       }
@@ -79,12 +77,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const reconnect = useCallback(async () => {
     setHwError(null);
-    await initSerial();
-  }, []);
-
-  const simulateRFID = useCallback((tagId?: string) => {
-    const id = tagId || "45 8B 1F 2D"; // Default test tag
-    simulateInbound(`RFID_DETECTED: ${id}`);
+    await initHardware('usb');
   }, []);
 
   // Simple translation helper t('landing.title')
@@ -115,7 +108,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       reconnect,
       setIsHardwareConnected: (connected: boolean) => setHwStatus(connected ? 'connected' : 'disconnected'),
       setHwError,
-      simulateRFID,
       t
     }}>
       {children}
